@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Power Plus — Contractor ERP</title>
+<style>
+  /* ---------- Design tokens ---------- */
+  :root{
+    --bg:#f4f6f9;
+    --surface:#ffffff;
+    --border:#e6e9ef;
+    --text:#1c2430;
+    --muted:#7b8494;
+    --primary:#2563eb;
+    --primary-soft:#e8f0ff;
+    --green:#16a34a;
+    --green-soft:#e6f6ec;
+    --red:#dc2626;
+    --red-soft:#fdeaea;
+    --amber:#d97706;
+    --amber-soft:#fef3e2;
+    --cash:#0891b2;
+    --cash-soft:#e0f5f9;
+    --bank:#7c3aed;
+    --bank-soft:#f0e9fd;
+    --radius:14px;
+    --radius-sm:9px;
+    --shadow:0 1px 2px rgba(16,24,40,.05),0 1px 3px rgba(16,24,40,.06);
+    --shadow-lg:0 10px 30px rgba(16,24,40,.12);
+    --nav-h:64px;
+    --sidebar-w:220px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    background:var(--bg);color:var(--text);font-size:15px;line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+  }
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;font-size:inherit}
+  input,select,textarea{font-family:inherit;font-size:16px}
+  h1,h2,h3,h4{margin:0;font-weight:650;letter-spacing:-.01em}
+  a{color:var(--primary);text-decoration:none}
+
+  /* ---------- Layout ---------- */
+  .app-shell{display:flex;min-height:100vh}
+  .sidebar{display:none}
+  .main{flex:1;min-width:0;padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom))}
+  .topbar{
+    position:sticky;top:0;z-index:20;background:rgba(244,246,249,.85);backdrop-filter:blur(10px);
+    padding:14px 18px 10px;display:flex;align-items:center;justify-content:space-between;gap:12px;
+    border-bottom:1px solid var(--border);
+  }
+  .topbar .title{font-size:20px;font-weight:700}
+  .topbar .sub{font-size:12.5px;color:var(--muted);margin-top:1px}
+  .content{padding:16px 16px 24px;max-width:920px;margin:0 auto}
+
+  /* ---------- Bottom nav (mobile) ---------- */
+  .bottomnav{
+    position:fixed;bottom:0;left:0;right:0;height:calc(var(--nav-h) + env(safe-area-inset-bottom));
+    padding-bottom:env(safe-area-inset-bottom);
+    background:var(--surface);border-top:1px solid var(--border);
+    display:flex;z-index:30;box-shadow:0 -2px 10px rgba(16,24,40,.04);
+  }
+  .bottomnav button{
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+    color:var(--muted);font-size:10.5px;font-weight:600;padding-top:6px;
+  }
+  .bottomnav button .ic{font-size:19px;line-height:1}
+  .bottomnav button.active{color:var(--primary)}
+
+  /* ---------- Cards ---------- */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .card + .card{margin-top:12px}
+  .card-pad{padding:16px}
+  .section-title{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:22px 4px 10px}
+
+  /* ---------- Stat grid ---------- */
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:13px 14px;box-shadow:var(--shadow)}
+  .stat .label{font-size:11.5px;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:5px}
+  .stat .value{font-size:21px;font-weight:750;margin-top:5px;letter-spacing:-.02em}
+  .stat.tint-blue{background:var(--primary-soft);border-color:transparent}
+  .stat.tint-green .value{color:var(--green)}
+  .stat.tint-red .value{color:var(--red)}
+  .stat.tint-amber .value{color:var(--amber)}
+
+  /* ---------- List rows ---------- */
+  .list{display:flex;flex-direction:column}
+  .row{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--border);text-align:left;width:100%}
+  .row:last-child{border-bottom:none}
+  .row.tap:active{background:#f8fafc}
+  .row .grow{flex:1;min-width:0}
+  .row .r-title{font-weight:640;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .r-sub{font-size:12.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .r-amt{font-weight:700;font-size:14.5px;text-align:right;white-space:nowrap}
+  .chev{color:#c2c9d6;font-size:18px}
+  .empty{text-align:center;color:var(--muted);padding:30px 16px;font-size:13.5px}
+  .empty .big{font-size:30px;display:block;margin-bottom:8px;opacity:.7}
+
+  /* ---------- Pills / tags ---------- */
+  .pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .pill.quote{background:var(--amber-soft);color:var(--amber)}
+  .pill.confirmed{background:var(--primary-soft);color:var(--primary)}
+  .pill.progress{background:#eef2ff;color:#4f46e5}
+  .pill.completed{background:var(--green-soft);color:var(--green)}
+  .tag{display:inline-flex;align-items:center;font-size:10px;font-weight:800;letter-spacing:.03em;padding:2px 7px;border-radius:6px}
+  .tag.cash{background:var(--cash-soft);color:var(--cash)}
+  .tag.bank{background:var(--bank-soft);color:var(--bank)}
+  .tag.in{background:var(--green-soft);color:var(--green)}
+  .tag.out{background:var(--red-soft);color:var(--red)}
+  .amt-in{color:var(--green)}
+  .amt-out{color:var(--red)}
+
+  /* ---------- Buttons ---------- */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;font-weight:650;font-size:14.5px;
+    padding:11px 16px;border-radius:var(--radius-sm);background:var(--surface);border:1px solid var(--border);color:var(--text);transition:.12s}
+  .btn:active{transform:scale(.98)}
+  .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .btn.block{width:100%}
+  .btn.sm{padding:8px 12px;font-size:13px}
+  .btn.ghost{background:transparent;border-color:transparent;color:var(--primary);font-weight:700}
+  .btn-add{position:fixed;right:16px;bottom:calc(var(--nav-h) + 18px + env(safe-area-inset-bottom));z-index:25;
+    background:var(--primary);color:#fff;width:54px;height:54px;border-radius:50%;font-size:28px;
+    box-shadow:0 8px 20px rgba(37,99,235,.4);display:flex;align-items:center;justify-content:center}
+  .btn-add:active{transform:scale(.94)}
+  .back{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-weight:600;font-size:14px}
+
+  /* ---------- Tabs ---------- */
+  .tabs{display:flex;gap:6px;overflow-x:auto;padding:2px 0 12px;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{padding:8px 14px;border-radius:999px;font-size:13.5px;font-weight:650;color:var(--muted);background:var(--surface);border:1px solid var(--border);white-space:nowrap}
+  .tab.active{background:var(--text);color:#fff;border-color:var(--text)}
+
+  /* ---------- Filters ---------- */
+  .filters{display:flex;gap:8px;overflow-x:auto;padding-bottom:12px;scrollbar-width:none}
+  .filters::-webkit-scrollbar{display:none}
+  .filters select,.filters input{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);font-size:13px;color:var(--text)}
+
+  /* ---------- Summary lines ---------- */
+  .kv{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px dashed var(--border);font-size:14px}
+  .kv:last-child{border-bottom:none}
+  .kv .k{color:var(--muted)}
+  .kv .v{font-weight:700}
+  .kv.total{font-size:16px;padding-top:13px;border-top:2px solid var(--text);border-bottom:none;margin-top:4px}
+  .kv.total .v{font-weight:800}
+
+  /* ---------- Modal ---------- */
+  .overlay{position:fixed;inset:0;background:rgba(16,24,40,.45);z-index:50;display:flex;align-items:flex-end;justify-content:center;opacity:0;transition:opacity .18s}
+  .overlay.show{opacity:1}
+  .sheet{background:var(--surface);width:100%;max-width:520px;border-radius:20px 20px 0 0;max-height:92vh;overflow-y:auto;
+    padding:18px 18px calc(20px + env(safe-area-inset-bottom));transform:translateY(30px);transition:transform .2s;box-shadow:var(--shadow-lg)}
+  .overlay.show .sheet{transform:translateY(0)}
+  .sheet-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .sheet-h h3{font-size:18px}
+  .sheet-h .x{font-size:22px;color:var(--muted);width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:50%}
+  .field{margin-bottom:13px}
+  .field label{display:block;font-size:12.5px;font-weight:650;color:var(--muted);margin-bottom:6px}
+  .field input,.field select,.field textarea{width:100%;padding:12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fbfcfe;color:var(--text)}
+  .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--primary);background:#fff}
+  .field textarea{min-height:64px;resize:vertical}
+  .field-row{display:flex;gap:10px}
+  .field-row .field{flex:1}
+  .seg{display:flex;gap:8px}
+  .seg button{flex:1;padding:11px;border:1px solid var(--border);border-radius:var(--radius-sm);font-weight:650;font-size:14px;background:#fbfcfe;color:var(--muted)}
+  .seg button.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .seg.mode button.on{background:var(--text);border-color:var(--text)}
+
+  /* ---------- Checklist ---------- */
+  .check{display:flex;align-items:center;gap:11px;padding:12px 16px;border-bottom:1px solid var(--border);width:100%;text-align:left}
+  .check:last-child{border-bottom:none}
+  .check .box{width:22px;height:22px;border-radius:6px;border:2px solid #cdd4e0;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;color:#fff}
+  .check.done .box{background:var(--green);border-color:var(--green)}
+  .check.done .txt{text-decoration:line-through;color:var(--muted)}
+  .check .txt{flex:1}
+
+  /* ---------- Bars (P&L) ---------- */
+  .bar-track{height:9px;background:var(--border);border-radius:99px;overflow:hidden;display:flex;margin:8px 0 4px}
+  .bar-seg{height:100%}
+  .legend{display:flex;gap:14px;font-size:11.5px;color:var(--muted);margin-top:4px}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .dot{width:9px;height:9px;border-radius:3px;display:inline-block}
+
+  .muted{color:var(--muted)}
+  .center{text-align:center}
+  .mt{margin-top:12px}
+  .flex-between{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .link-del{color:var(--red);font-size:12px;font-weight:600}
+
+  /* ---------- Desktop ---------- */
+  @media(min-width:860px){
+    .bottomnav,.btn-add{display:none}
+    .sidebar{display:flex;flex-direction:column;width:var(--sidebar-w);background:var(--surface);border-right:1px solid var(--border);position:sticky;top:0;height:100vh;padding:20px 12px;gap:4px}
+    .sidebar .brand{font-size:19px;font-weight:800;padding:6px 12px 18px;letter-spacing:-.02em}
+    .sidebar .brand span{color:var(--primary)}
+    .sidebar .navbtn{display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:10px;color:var(--muted);font-weight:640;font-size:14.5px;width:100%;text-align:left}
+    .sidebar .navbtn .ic{font-size:18px;width:20px;text-align:center}
+    .sidebar .navbtn.active{background:var(--primary-soft);color:var(--primary)}
+    .sidebar .navbtn:hover:not(.active){background:#f4f6f9}
+    .main{padding-bottom:0}
+    .content{padding:22px 26px 40px;max-width:860px}
+    .stat-grid{grid-template-columns:repeat(4,1fr)}
+    .desk-add{display:inline-flex !important}
+  }
+  .desk-add{display:none}
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <!-- Desktop sidebar -->
+  <nav class="sidebar" id="sidebar"></nav>
+  <!-- Main column -->
+  <div class="main">
+    <div id="app"></div>
+  </div>
+</div>
+<!-- Mobile bottom nav -->
+<nav class="bottomnav" id="bottomnav"></nav>
+<!-- Modal mount -->
+<div id="modal-mount"></div>
+
+<script>
+/* =====================================================================
+   Power Plus — Contractor Mini ERP  (UI-only prototype)
+   Single source of truth = `state`. Everything derived + re-rendered.
+   ===================================================================== */
+
+/* ---------------------------- STATE ------------------------------- */
+const state = {
+  route:{ name:'dashboard', id:null, tab:null },
+  sites:[],      // {id,name,phone,location,workType,status,quote:{items:[]},bill:{active,items:[]},advances:[],expenses:[],pending:[]}
+  employees:[],  // {id,name,phone,role,wage,attendance:[{id,date,siteId,unit,hours}],advances:[]}
+  shops:[],      // {id,name,siteId,received:[{id,date,amount,mode}],paid:[{id,date,amount,mode}]}
+  seq:1
+};
+const uid = () => 'x' + (state.seq++);
+const WORK_TYPES = ['Electrical','Plumbing','Mixed'];
+const STATUSES = ['Quotation Sent','Confirmed','In Progress','Completed'];
+const ROLES = ['Electrician','Plumber','Helper'];
+const EXP_CATS = ['Materials','Tea/Snacks','Travel','Room Rent','Misc'];
+
+/* ---------------------------- HELPERS ----------------------------- */
+const today = () => new Date().toISOString().slice(0,10);
+const inr = n => (n<0?'−':'') + '₹' + Math.abs(Math.round(n||0)).toLocaleString('en-IN');
+function fmtDate(d){
+  const dt = new Date(d+'T00:00:00');
+  return dt.toLocaleDateString('en-IN',{day:'2-digit',month:'short'});
+}
+const site = id => state.sites.find(s=>s.id===id);
+const emp  = id => state.employees.find(e=>e.id===id);
+const shop = id => state.shops.find(s=>s.id===id);
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const modeTag = m => `<span class="tag ${m==='Bank'?'bank':'cash'}">${m}</span>`;
+
+/* ------------------------ DERIVED CALCULATIONS -------------------- */
+// unit factor for a day of attendance
+function dayFactor(a){ return a.unit==='Full'?1 : a.unit==='Half'?0.5 : (a.hours||0)/8; }
+function attWage(empObj,a){ return empObj.wage * dayFactor(a); }
+
+// bill line total
+const lineAmt = it => (it.qty||0)*(it.rate||0);
+const itemsTotal = items => items.reduce((s,it)=>s+lineAmt(it),0);
+
+// Site figures
+function siteBillTotal(s){ return s.bill.active ? itemsTotal(s.bill.items) : 0; }
+function siteQuoteTotal(s){ return itemsTotal(s.quote.items); }
+function siteAdvances(s){ return s.advances.reduce((a,x)=>a+x.amount,0); }
+function siteExpenses(s){ return s.expenses.reduce((a,x)=>a+x.amount,0); }
+// wages incurred on this site (across all employees' attendance)
+function siteWages(s){
+  let w=0;
+  state.employees.forEach(e=>e.attendance.forEach(a=>{ if(a.siteId===s.id) w+=attWage(e,a); }));
+  return w;
+}
+function siteReceivable(s){ return siteBillTotal(s) - siteAdvances(s); }
+function siteProfit(s){ return siteBillTotal(s) - (siteExpenses(s)+siteWages(s)); }
+// workers derived from attendance on this site
+function siteWorkers(s){
+  const map={};
+  state.employees.forEach(e=>e.attendance.forEach(a=>{
+    if(a.siteId!==s.id) return;
+    map[e.id]=map[e.id]||{emp:e,days:0,wage:0};
+    map[e.id].days+=dayFactor(a);
+    map[e.id].wage+=attWage(e,a);
+  }));
+  return Object.values(map);
+}
+
+// Employee figures
+function empWagesEarned(e){ return e.attendance.reduce((s,a)=>s+attWage(e,a),0); }
+function empAdvances(e){ return e.advances.reduce((s,a)=>s+a.amount,0); }
+function empBalance(e){ return empWagesEarned(e)-empAdvances(e); } // payable to worker
+
+// Shop figures
+function shopReceived(sh){ return sh.received.reduce((a,x)=>a+x.amount,0); }
+function shopPaid(sh){ return sh.paid.reduce((a,x)=>a+x.amount,0); }
+function shopPending(sh){ return shopReceived(sh)-shopPaid(sh); } // holding to pay out
+const shopDuesTotal = () => state.shops.reduce((a,sh)=>a+shopPending(sh),0);
+
+/* ----------------- UNIFIED LEDGER (auto-derived) ------------------ */
+// Every cash/bank movement becomes one ledger row. No double entry.
+function buildLedger(){
+  const L=[];
+  state.sites.forEach(s=>{
+    s.advances.forEach(a=>L.push({date:a.date,type:'Customer Advance',dir:'in',amount:a.amount,mode:a.mode,ref:s.name,siteId:s.id,ptype:'advance'}));
+    s.expenses.forEach(x=>L.push({date:x.date,type:'Site Expense',dir:'out',amount:x.amount,mode:x.mode,ref:s.name+' · '+x.category,siteId:s.id,ptype:'expense'}));
+  });
+  state.employees.forEach(e=>{
+    e.advances.forEach(a=>L.push({date:a.date,type:'Worker Advance',dir:'out',amount:a.amount,mode:a.mode,ref:e.name,empId:e.id,ptype:'wadvance'}));
+  });
+  state.shops.forEach(sh=>{
+    sh.received.forEach(r=>L.push({date:r.date,type:'Shop Money In',dir:'in',amount:r.amount,mode:r.mode,ref:sh.name,shopId:sh.id,siteId:sh.siteId,ptype:'shopin'}));
+    sh.paid.forEach(p=>L.push({date:p.date,type:'Shop Paid',dir:'out',amount:p.amount,mode:p.mode,ref:sh.name,shopId:sh.id,siteId:sh.siteId,ptype:'shopout'}));
+  });
+  L.sort((a,b)=> a.date<b.date?1 : a.date>b.date?-1 : 0);
+  return L;
+}
+function balances(){
+  let cash=0,bank=0;
+  buildLedger().forEach(l=>{
+    const v = l.dir==='in'? l.amount : -l.amount;
+    if(l.mode==='Bank') bank+=v; else cash+=v;
+  });
+  return {cash,bank};
+}
+// P&L — shop money NEVER included (pass-through)
+function overallPnl(){
+  let income=0,expenses=0,wages=0;
+  state.sites.forEach(s=>{ income+=siteBillTotal(s); expenses+=siteExpenses(s); wages+=siteWages(s); });
+  const cost=expenses+wages;
+  return {income,expenses,wages,cost,profit:income-cost,margin: income? (income-cost)/income*100 : 0};
+}
+const totalReceivable = () => state.sites.reduce((a,s)=>a+Math.max(0,siteReceivable(s)),0);
+const activeSites = () => state.sites.filter(s=>s.status!=='Completed');
+const workersDue = () => state.employees.filter(e=>empBalance(e)>0);
+
+/* =====================================================================
+   RENDER
+   ===================================================================== */
+const NAV = [
+  {name:'dashboard',label:'Home',ic:'🏠'},
+  {name:'sites',label:'Sites',ic:'📍'},
+  {name:'employees',label:'Workers',ic:'👷'},
+  {name:'ledger',label:'Ledger',ic:'📒'},
+  {name:'shops',label:'Shops',ic:'🏪'},
+  {name:'reports',label:'P&L',ic:'📊'}
+];
+
+function go(name,id=null,tab=null){ state.route={name,id,tab}; render(); window.scrollTo(0,0); }
+
+function render(){
+  renderNav();
+  const r=state.route;
+  const app=document.getElementById('app');
+  let html='';
+  if(r.name==='dashboard') html=viewDashboard();
+  else if(r.name==='sites') html = r.id? viewSiteDetail(site(r.id)) : viewSites();
+  else if(r.name==='employees') html = r.id? viewEmpDetail(emp(r.id)) : viewEmployees();
+  else if(r.name==='ledger') html=viewLedger();
+  else if(r.name==='shops') html=viewShops();
+  else if(r.name==='reports') html=viewReports();
+  app.innerHTML=html;
+}
+
+function renderNav(){
+  const cur=state.route.name;
+  document.getElementById('bottomnav').innerHTML = NAV.map(n=>
+    `<button class="${n.name===cur?'active':''}" onclick="go('${n.name}')">
+       <span class="ic">${n.ic}</span>${n.label}</button>`).join('');
+  document.getElementById('sidebar').innerHTML =
+    `<div class="brand">Power<span>Plus</span></div>` +
+    NAV.map(n=>`<button class="navbtn ${n.name===cur?'active':''}" onclick="go('${n.name}')">
+       <span class="ic">${n.ic}</span>${n.label}</button>`).join('');
+}
+
+function topbar(title,sub,back){
+  return `<div class="topbar">
+    <div style="min-width:0">
+      ${back?`<button class="back" onclick="${back}">‹ Back</button>`:''}
+      <div class="title">${esc(title)}</div>
+      ${sub?`<div class="sub">${sub}</div>`:''}
+    </div>
+    <div id="tb-action"></div>
+  </div>`;
+}
+function fab(onclick){ return `<button class="btn-add" onclick="${onclick}">＋</button>`; }
+
+/* --------------------------- DASHBOARD ---------------------------- */
+function viewDashboard(){
+  const b=balances(), pnl=overallPnl();
+  const led=buildLedger().slice(0,6);
+  const stats=[
+    {label:'💰 Receivable',value:inr(totalReceivable()),cls:'tint-amber'},
+    {label:'💵 Cash in hand',value:inr(b.cash),cls:b.cash<0?'tint-red':''},
+    {label:'🏦 Bank balance',value:inr(b.bank),cls:''},
+    {label:'🏪 Shop dues',value:inr(shopDuesTotal()),cls:''},
+    {label:'📍 Active sites',value:activeSites().length,cls:'tint-blue'},
+    {label:'👷 Workers due',value:workersDue().length,cls:''},
+    {label:'📈 Net profit',value:inr(pnl.profit),cls: pnl.profit>=0?'tint-green':'tint-red'},
+    {label:'🧾 Total billed',value:inr(pnl.income),cls:''}
+  ];
+  return topbar('Power Plus','Contractor dashboard') + `<div class="content">
+    <div class="stat-grid">
+      ${stats.map(s=>`<div class="stat ${s.cls}"><div class="label">${s.label}</div><div class="value">${s.value}</div></div>`).join('')}
+    </div>
+    <div class="section-title">Quick actions</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn primary" onclick="formSite()">＋ New Site</button>
+      <button class="btn" onclick="formEmployee()">＋ Worker</button>
+      <button class="btn" onclick="go('ledger')">View Ledger</button>
+    </div>
+    <div class="section-title">Recent activity</div>
+    <div class="card">${ led.length? `<div class="list">${led.map(ledgerRow).join('')}</div>`
+        : `<div class="empty"><span class="big">📒</span>No transactions yet</div>`}</div>
+  </div>`;
+}
+
+/* ----------------------------- SITES ------------------------------ */
+function statusPill(st){
+  const c = st==='Completed'?'completed' : st==='In Progress'?'progress' : st==='Confirmed'?'confirmed':'quote';
+  return `<span class="pill ${c}">${st}</span>`;
+}
+function viewSites(){
+  const list = state.sites.map(s=>{
+    const recv=siteReceivable(s);
+    return `<button class="row tap" onclick="go('sites','${s.id}')">
+      <div class="grow">
+        <div class="r-title">${esc(s.name)}</div>
+        <div class="r-sub">${esc(s.location||'—')} · ${esc(s.workType)}</div>
+      </div>
+      <div style="text-align:right">
+        ${statusPill(s.status)}
+        ${s.bill.active?`<div class="r-sub" style="margin-top:4px">Due ${inr(Math.max(0,recv))}</div>`:''}
+      </div>
+      <span class="chev">›</span>
+    </button>`;
+  }).join('');
+  return topbar('Sites', state.sites.length+' total') + `<div class="content">
+    <button class="btn primary block desk-add" style="margin-bottom:14px" onclick="formSite()">＋ New Site</button>
+    <div class="card">${ state.sites.length? `<div class="list">${list}</div>`
+      : `<div class="empty"><span class="big">📍</span>No sites yet.<br>Tap ＋ to add your first job.</div>`}</div>
+  </div>` + fab('formSite()');
+}
+
+function viewSiteDetail(s){
+  if(!s) return viewSites();
+  const tab = state.route.tab || 'overview';
+  const tabs=[['overview','Overview'],['bill','Quotation/Bill'],['advances','Advances'],['expenses','Expenses'],['workers','Workers'],['pending','Pending']];
+  let body='';
+  if(tab==='overview') body=siteOverview(s);
+  else if(tab==='bill') body=siteBill(s);
+  else if(tab==='advances') body=siteAdvancesTab(s);
+  else if(tab==='expenses') body=siteExpensesTab(s);
+  else if(tab==='workers') body=siteWorkersTab(s);
+  else if(tab==='pending') body=sitePendingTab(s);
+
+  return topbar(s.name, esc(s.location||'')+' · '+esc(s.phone||''), "go('sites')") + `<div class="content">
+    <div style="margin-bottom:10px">${statusPill(s.status)} <span class="tag" style="background:#eef1f6;color:#5b6472;margin-left:4px">${esc(s.workType)}</span></div>
+    <div class="tabs">${tabs.map(t=>`<button class="tab ${t[0]===tab?'active':''}" onclick="go('sites','${s.id}','${t[0]}')">${t[1]}</button>`).join('')}</div>
+    ${body}
+  </div>`;
+}
+
+function siteOverview(s){
+  const nextStatus = STATUSES[STATUSES.indexOf(s.status)+1];
+  return `<div class="card card-pad">
+      <div class="kv"><span class="k">Bill total</span><span class="v">${inr(siteBillTotal(s))}</span></div>
+      <div class="kv"><span class="k">Advances received</span><span class="v amt-in">${inr(siteAdvances(s))}</span></div>
+      <div class="kv"><span class="k">Balance receivable</span><span class="v amt-out">${inr(Math.max(0,siteReceivable(s)))}</span></div>
+      <div class="kv"><span class="k">Site expenses</span><span class="v">${inr(siteExpenses(s))}</span></div>
+      <div class="kv"><span class="k">Worker wages</span><span class="v">${inr(siteWages(s))}</span></div>
+      <div class="kv total"><span class="k">Site profit</span><span class="v ${siteProfit(s)>=0?'amt-in':'amt-out'}">${inr(siteProfit(s))}</span></div>
+    </div>
+    ${ nextStatus? `<button class="btn primary block mt" onclick="advanceStatus('${s.id}')">Mark as “${nextStatus}”</button>`
+        : `<div class="center muted mt">✅ Job completed</div>`}
+    <button class="btn block mt" onclick="formSite('${s.id}')">Edit site details</button>`;
+}
+
+function siteBill(s){
+  const isBill=s.bill.active;
+  const items = isBill? s.bill.items : s.quote.items;
+  const label = isBill?'Bill':'Quotation';
+  const rows = items.length? items.map((it,i)=>`
+    <div class="row">
+      <div class="grow"><div class="r-title">${esc(it.desc)}</div>
+        <div class="r-sub">${it.qty} × ${inr(it.rate)}</div></div>
+      <div class="r-amt">${inr(lineAmt(it))}</div>
+      <button class="link-del" onclick="delLine('${s.id}',${i})">✕</button>
+    </div>`).join('') : `<div class="empty">No line items yet</div>`;
+  return `<div class="flex-between" style="margin-bottom:8px">
+      <div class="section-title" style="margin:0">${label} items</div>
+      <button class="btn sm" onclick="formLine('${s.id}')">＋ Item</button>
+    </div>
+    <div class="card"><div class="list">${rows}</div>
+      <div class="card-pad kv total"><span class="k">${label} total</span><span class="v">${inr(itemsTotal(items))}</span></div>
+    </div>
+    ${ !isBill
+       ? `<button class="btn primary block mt" ${items.length?'':'disabled style="opacity:.5"'} onclick="convertToBill('${s.id}')">✓ Convert to Bill</button>
+          <div class="center muted mt" style="font-size:12.5px">Once customer confirms, convert. Bill stays editable.</div>`
+       : `<div class="center mt"><span class="pill confirmed">Bill active · editable</span></div>` }`;
+}
+
+function siteAdvancesTab(s){
+  const rows = s.advances.length? s.advances.map(a=>`
+    <div class="row"><div class="grow"><div class="r-title">${inr(a.amount)} ${modeTag(a.mode)}</div>
+      <div class="r-sub">${fmtDate(a.date)}</div></div>
+      <button class="link-del" onclick="delAdvance('${s.id}','${a.id}')">✕</button></div>`).join('')
+    : `<div class="empty">No advances received</div>`;
+  return `<div class="card"><div class="list">${rows}</div>
+      <div class="card-pad kv total"><span class="k">Total received</span><span class="v amt-in">${inr(siteAdvances(s))}</span></div></div>
+    <button class="btn primary block mt" onclick="formAdvance('${s.id}')">＋ Record Advance</button>`;
+}
+
+function siteExpensesTab(s){
+  const rows = s.expenses.length? s.expenses.map(x=>`
+    <div class="row"><div class="grow"><div class="r-title">${esc(x.category)} ${modeTag(x.mode)}</div>
+      <div class="r-sub">${fmtDate(x.date)}${x.note?' · '+esc(x.note):''}</div></div>
+      <div class="r-amt amt-out">${inr(x.amount)}</div>
+      <button class="link-del" onclick="delExpense('${s.id}','${x.id}')">✕</button></div>`).join('')
+    : `<div class="empty">No expenses logged</div>`;
+  return `<div class="card"><div class="list">${rows}</div>
+      <div class="card-pad kv total"><span class="k">Total expenses</span><span class="v amt-out">${inr(siteExpenses(s))}</span></div></div>
+    <button class="btn primary block mt" onclick="formExpense('${s.id}')">＋ Add Expense</button>`;
+}
+
+function siteWorkersTab(s){
+  const w=siteWorkers(s);
+  const rows = w.length? w.map(x=>`
+    <div class="row"><div class="grow"><div class="r-title">${esc(x.emp.name)}</div>
+      <div class="r-sub">${esc(x.emp.role)} · ${x.days} day${x.days===1?'':'s'}</div></div>
+      <div class="r-amt">${inr(x.wage)}</div></div>`).join('')
+    : `<div class="empty">No attendance marked for this site.<br>Add via a worker’s Attendance tab.</div>`;
+  return `<div class="card"><div class="list">${rows}</div>
+    ${w.length?`<div class="card-pad kv total"><span class="k">Total wages</span><span class="v">${inr(siteWages(s))}</span></div>`:''}</div>
+    <button class="btn primary block mt" onclick="formAttendanceForSite('${s.id}')">＋ Mark Attendance</button>`;
+}
+
+function sitePendingTab(s){
+  const rows = s.pending.length? s.pending.map(p=>`
+    <button class="check ${p.done?'done':''}" onclick="togglePending('${s.id}','${p.id}')">
+      <span class="box">${p.done?'✓':''}</span>
+      <span class="txt">${esc(p.text)}</span>
+      <span class="link-del" onclick="event.stopPropagation();delPending('${s.id}','${p.id}')">✕</span>
+    </button>`).join('') : `<div class="empty">No pending works 🎉</div>`;
+  return `<div class="card"><div class="list">${rows}</div></div>
+    <button class="btn primary block mt" onclick="formPending('${s.id}')">＋ Add Task</button>`;
+}
+
+/* --------------------------- EMPLOYEES ---------------------------- */
+function viewEmployees(){
+  const list = state.employees.map(e=>{
+    const bal=empBalance(e);
+    return `<button class="row tap" onclick="go('employees','${e.id}')">
+      <div class="grow"><div class="r-title">${esc(e.name)}</div>
+        <div class="r-sub">${esc(e.role)} · ${inr(e.wage)}/day</div></div>
+      <div style="text-align:right"><div class="r-amt ${bal>0?'amt-out':''}">${inr(bal)}</div>
+        <div class="r-sub">payable</div></div>
+      <span class="chev">›</span></button>`;
+  }).join('');
+  return topbar('Workers', state.employees.length+' total') + `<div class="content">
+    <button class="btn primary block desk-add" style="margin-bottom:14px" onclick="formEmployee()">＋ New Worker</button>
+    <div class="card">${ state.employees.length? `<div class="list">${list}</div>`
+      : `<div class="empty"><span class="big">👷</span>No workers yet.</div>`}</div>
+  </div>` + fab('formEmployee()');
+}
+
+function viewEmpDetail(e){
+  if(!e) return viewEmployees();
+  const tab=state.route.tab||'attendance';
+  const tabs=[['attendance','Attendance'],['advances','Advances'],['settlement','Settlement']];
+  let body='';
+  if(tab==='attendance'){
+    const rows = e.attendance.length? [...e.attendance].sort((a,b)=>a.date<b.date?1:-1).map(a=>{
+      const st=site(a.siteId);
+      return `<div class="row"><div class="grow"><div class="r-title">${st?esc(st.name):'—'}</div>
+        <div class="r-sub">${fmtDate(a.date)} · ${a.unit==='Custom'?a.hours+'h':a.unit} day</div></div>
+        <div class="r-amt">${inr(attWage(e,a))}</div>
+        <button class="link-del" onclick="delAttendance('${e.id}','${a.id}')">✕</button></div>`;
+    }).join('') : `<div class="empty">No attendance yet</div>`;
+    body=`<div class="card"><div class="list">${rows}</div>
+      <div class="card-pad kv total"><span class="k">Total wages earned</span><span class="v">${inr(empWagesEarned(e))}</span></div></div>
+      <button class="btn primary block mt" onclick="formAttendance('${e.id}')">＋ Mark Attendance</button>`;
+  } else if(tab==='advances'){
+    const rows = e.advances.length? e.advances.map(a=>`
+      <div class="row"><div class="grow"><div class="r-title">${inr(a.amount)} ${modeTag(a.mode)}</div>
+        <div class="r-sub">${fmtDate(a.date)}</div></div>
+        <button class="link-del" onclick="delWAdvance('${e.id}','${a.id}')">✕</button></div>`).join('')
+      : `<div class="empty">No advances given</div>`;
+    body=`<div class="card"><div class="list">${rows}</div>
+      <div class="card-pad kv total"><span class="k">Total advances</span><span class="v amt-out">${inr(empAdvances(e))}</span></div></div>
+      <button class="btn primary block mt" onclick="formWAdvance('${e.id}')">＋ Give Advance</button>`;
+  } else {
+    body=`<div class="card card-pad">
+      <div class="kv"><span class="k">Wages earned</span><span class="v">${inr(empWagesEarned(e))}</span></div>
+      <div class="kv"><span class="k">Advances taken</span><span class="v amt-out">${inr(empAdvances(e))}</span></div>
+      <div class="kv total"><span class="k">Balance payable</span><span class="v ${empBalance(e)>=0?'amt-in':'amt-out'}">${inr(empBalance(e))}</span></div>
+    </div><div class="center muted mt" style="font-size:12.5px">Amount still owed to worker after advances.</div>`;
+  }
+  return topbar(e.name, esc(e.role)+' · '+inr(e.wage)+'/day', "go('employees')") + `<div class="content">
+    <div class="tabs">${tabs.map(t=>`<button class="tab ${t[0]===tab?'active':''}" onclick="go('employees','${e.id}','${t[0]}')">${t[1]}</button>`).join('')}</div>
+    ${body}
+    <button class="btn block mt" onclick="formEmployee('${e.id}')">Edit worker</button>
+  </div>`;
+}
+
+/* ----------------------------- LEDGER ----------------------------- */
+const ledgerFilter={site:'',type:'',mode:'',from:'',to:''};
+function ledgerRow(l){
+  return `<div class="row"><div class="grow">
+      <div class="r-title">${l.type} <span class="tag ${l.dir==='in'?'in':'out'}">${l.dir==='in'?'IN':'OUT'}</span></div>
+      <div class="r-sub">${fmtDate(l.date)} · ${esc(l.ref)}</div></div>
+      <div style="text-align:right"><div class="r-amt ${l.dir==='in'?'amt-in':'amt-out'}">${l.dir==='in'?'+':'−'}${inr(l.amount)}</div>
+      <div style="margin-top:3px">${modeTag(l.mode)}</div></div></div>`;
+}
+function viewLedger(){
+  const b=balances();
+  let L=buildLedger();
+  const f=ledgerFilter;
+  if(f.site) L=L.filter(l=>l.siteId===f.site);
+  if(f.type) L=L.filter(l=>l.type===f.type);
+  if(f.mode) L=L.filter(l=>l.mode===f.mode);
+  if(f.from) L=L.filter(l=>l.date>=f.from);
+  if(f.to) L=L.filter(l=>l.date<=f.to);
+  const types=[...new Set(buildLedger().map(l=>l.type))];
+  return topbar('Money Ledger','Every rupee in & out') + `<div class="content">
+    <div class="stat-grid" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
+      <div class="stat"><div class="label">💵 Cash balance</div><div class="value ${b.cash<0?'':''}" style="color:${b.cash<0?'var(--red)':'var(--cash)'}">${inr(b.cash)}</div></div>
+      <div class="stat"><div class="label">🏦 Bank balance</div><div class="value" style="color:${b.bank<0?'var(--red)':'var(--bank)'}">${inr(b.bank)}</div></div>
+    </div>
+    <div class="filters">
+      <select onchange="setLF('site',this.value)"><option value="">All sites</option>${state.sites.map(s=>`<option value="${s.id}" ${f.site===s.id?'selected':''}>${esc(s.name)}</option>`).join('')}</select>
+      <select onchange="setLF('type',this.value)"><option value="">All types</option>${types.map(t=>`<option ${f.type===t?'selected':''}>${t}</option>`).join('')}</select>
+      <select onchange="setLF('mode',this.value)"><option value="">Cash+Bank</option><option ${f.mode==='Cash'?'selected':''}>Cash</option><option ${f.mode==='Bank'?'selected':''}>Bank</option></select>
+      <input type="date" value="${f.from}" onchange="setLF('from',this.value)" title="From">
+      <input type="date" value="${f.to}" onchange="setLF('to',this.value)" title="To">
+      ${ (f.site||f.type||f.mode||f.from||f.to)?`<button class="btn sm" onclick="clearLF()">Clear</button>`:''}
+    </div>
+    <div class="card">${ L.length? `<div class="list">${L.map(ledgerRow).join('')}</div>`
+      : `<div class="empty"><span class="big">📒</span>No matching transactions</div>`}</div>
+  </div>`;
+}
+function setLF(k,v){ ledgerFilter[k]=v; render(); }
+function clearLF(){ Object.keys(ledgerFilter).forEach(k=>ledgerFilter[k]=''); render(); }
+
+/* ---------------------------- SHOP DUES --------------------------- */
+function viewShops(){
+  const list = state.shops.map(sh=>{
+    const st=site(sh.siteId);
+    return `<div class="card" style="margin-top:12px">
+      <div class="card-pad">
+        <div class="flex-between"><h3 style="font-size:16px">${esc(sh.name)}</h3>
+          <span class="pill ${shopPending(sh)>0?'quote':'completed'}">${shopPending(sh)>0?'Pending':'Cleared'}</span></div>
+        <div class="r-sub" style="margin-top:2px">${st?esc(st.name):'No site linked'}</div>
+        <div class="kv" style="margin-top:8px"><span class="k">Received from customer</span><span class="v amt-in">${inr(shopReceived(sh))}</span></div>
+        <div class="kv"><span class="k">Paid to shop</span><span class="v amt-out">${inr(shopPaid(sh))}</span></div>
+        <div class="kv total"><span class="k">Holding to pay</span><span class="v">${inr(shopPending(sh))}</span></div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn sm" style="flex:1" onclick="formShopReceive('${sh.id}')">＋ Received</button>
+          <button class="btn primary sm" style="flex:1" onclick="formShopPay('${sh.id}')">Pay shop</button>
+        </div>
+      </div></div>`;
+  }).join('');
+  return topbar('Shop Dues','Pass-through money · not income') + `<div class="content">
+    <div class="stat" style="margin-bottom:6px"><div class="label">🏪 Total holding / payable to shops</div><div class="value">${inr(shopDuesTotal())}</div></div>
+    <button class="btn primary block desk-add mt" onclick="formShop()">＋ New Shop</button>
+    ${ state.shops.length? list : `<div class="card mt"><div class="empty"><span class="big">🏪</span>No shops yet.</div></div>`}
+  </div>` + fab('formShop()');
+}
+
+/* ---------------------------- REPORTS ----------------------------- */
+function barRow(income,cost){
+  const tot=Math.max(income,cost,1);
+  const iw=income/tot*100, cw=cost/tot*100;
+  return `<div class="bar-track">
+    <div class="bar-seg" style="width:${iw}%;background:var(--green)"></div></div>
+    <div class="bar-track"><div class="bar-seg" style="width:${cw}%;background:var(--red)"></div></div>`;
+}
+function viewReports(){
+  const p=overallPnl();
+  const perSite = state.sites.map(s=>{
+    const inc=siteBillTotal(s), cost=siteExpenses(s)+siteWages(s), prof=inc-cost;
+    return `<div class="card card-pad" style="margin-top:12px">
+      <div class="flex-between"><h3 style="font-size:15.5px">${esc(s.name)}</h3>
+        <span class="v ${prof>=0?'amt-in':'amt-out'}" style="font-weight:800">${inr(prof)}</span></div>
+      <div class="kv"><span class="k">Income (bill)</span><span class="v">${inr(inc)}</span></div>
+      <div class="kv"><span class="k">Expenses + wages</span><span class="v amt-out">${inr(cost)}</span></div>
+      ${barRow(inc,cost)}
+      <div class="legend"><span><i class="dot" style="background:var(--green)"></i>Income</span><span><i class="dot" style="background:var(--red)"></i>Cost</span>
+        <span style="margin-left:auto">Margin ${inc? Math.round(prof/inc*100):0}%</span></div>
+    </div>`;
+  }).join('');
+  return topbar('Reports / P&L','Shop money excluded') + `<div class="content">
+    <div class="card card-pad">
+      <div class="section-title" style="margin-top:0">Overall</div>
+      <div class="kv"><span class="k">Total income (bills)</span><span class="v amt-in">${inr(p.income)}</span></div>
+      <div class="kv"><span class="k">Site expenses</span><span class="v amt-out">${inr(p.expenses)}</span></div>
+      <div class="kv"><span class="k">Worker wages</span><span class="v amt-out">${inr(p.wages)}</span></div>
+      <div class="kv total"><span class="k">Net profit</span><span class="v ${p.profit>=0?'amt-in':'amt-out'}">${inr(p.profit)} <span class="muted" style="font-weight:600;font-size:12px">(${Math.round(p.margin)}%)</span></span></div>
+      ${barRow(p.income,p.cost)}
+      <div class="legend"><span><i class="dot" style="background:var(--green)"></i>Income</span><span><i class="dot" style="background:var(--red)"></i>Cost</span></div>
+    </div>
+    <div class="section-title">Per site</div>
+    ${ state.sites.length? perSite : `<div class="card"><div class="empty">No sites to report</div></div>`}
+  </div>`;
+}
+
+/* =====================================================================
+   MODAL FORM ENGINE
+   fields: {name,label,type,options,default,required,placeholder}
+   types: text,number,date,select,textarea,mode(Cash/Bank seg),seg
+   ===================================================================== */
+let modalState={};
+function openForm(title, fields, onSubmit, submitLabel='Save'){
+  modalState={};
+  fields.forEach(f=> modalState[f.name] = f.default!==undefined? f.default : (f.type==='mode'?'Cash':''));
+  const mount=document.getElementById('modal-mount');
+  mount.innerHTML=`<div class="overlay" id="ov">
+    <div class="sheet" onclick="event.stopPropagation()">
+      <div class="sheet-h"><h3>${esc(title)}</h3><button class="x" onclick="closeModal()">✕</button></div>
+      <form id="mform">${fields.map(fieldHtml).join('')}
+        <button type="submit" class="btn primary block mt">${submitLabel}</button>
+      </form>
+    </div></div>`;
+  document.getElementById('ov').onclick=closeModal;
+  requestAnimationFrame(()=>document.getElementById('ov').classList.add('show'));
+  document.getElementById('mform').onsubmit=e=>{
+    e.preventDefault();
+    // pull values
+    fields.forEach(f=>{
+      if(f.type==='mode'||f.type==='seg') return; // already in modalState
+      const el=document.getElementById('f_'+f.name);
+      modalState[f.name]= f.type==='number'? parseFloat(el.value||0) : el.value.trim();
+    });
+    // required check
+    for(const f of fields){
+      if(f.required && (modalState[f.name]===''||modalState[f.name]==null||(f.type==='number'&&isNaN(modalState[f.name])))){
+        el_focus(f.name); return;
+      }
+    }
+    onSubmit({...modalState});
+    closeModal();
+  };
+}
+function el_focus(n){ const e=document.getElementById('f_'+n); if(e){e.focus(); e.style.borderColor='var(--red)';} }
+function closeModal(){
+  const ov=document.getElementById('ov'); if(!ov) return;
+  ov.classList.remove('show');
+  setTimeout(()=>document.getElementById('modal-mount').innerHTML='',180);
+}
+function fieldHtml(f){
+  if(f.type==='mode') return segHtml(f.name,f.label||'Mode',['Cash','Bank'],'mode');
+  if(f.type==='seg') return segHtml(f.name,f.label,f.options,'');
+  let inner='';
+  const v=esc(f.default||'');
+  if(f.type==='select'){
+    inner=`<select id="f_${f.name}">${f.options.map(o=>`<option ${f.default===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+  } else if(f.type==='textarea'){
+    inner=`<textarea id="f_${f.name}" placeholder="${esc(f.placeholder||'')}">${v}</textarea>`;
+  } else {
+    inner=`<input id="f_${f.name}" type="${f.type||'text'}" value="${v}" placeholder="${esc(f.placeholder||'')}" ${f.type==='number'?'inputmode="decimal"':''} ${f.type==='number'?'step="any"':''}>`;
+  }
+  return `<div class="field"><label>${esc(f.label)}${f.required?' *':''}</label>${inner}</div>`;
+}
+function segHtml(name,label,opts,cls){
+  return `<div class="field"><label>${esc(label)}</label>
+    <div class="seg ${cls}" id="seg_${name}">${opts.map(o=>
+      `<button type="button" class="${modalState[name]===o?'on':''}" onclick="pickSeg('${name}','${o}')">${o}</button>`).join('')}</div></div>`;
+}
+function pickSeg(name,val){
+  modalState[name]=val;
+  document.querySelectorAll('#seg_'+name+' button').forEach(b=>b.classList.toggle('on', b.textContent===val));
+}
+
+/* =====================================================================
+   FORMS (each mutates state then re-renders)
+   ===================================================================== */
+function formSite(id){
+  const s=id?site(id):null;
+  openForm(s?'Edit Site':'New Site',[
+    {name:'name',label:'Customer name',required:true,default:s?.name,placeholder:'e.g. Rahim House'},
+    {name:'phone',label:'Phone',type:'text',default:s?.phone,placeholder:'9xxxxxxxxx'},
+    {name:'location',label:'Location',default:s?.location,placeholder:'e.g. Kaloor'},
+    {name:'workType',label:'Work type',type:'select',options:WORK_TYPES,default:s?.workType||'Electrical'},
+    ...(s?[{name:'status',label:'Status',type:'select',options:STATUSES,default:s.status}]:[])
+  ], v=>{
+    if(s){ Object.assign(s,v); }
+    else state.sites.push({id:uid(),name:v.name,phone:v.phone,location:v.location,workType:v.workType,
+      status:'Quotation Sent',quote:{items:[]},bill:{active:false,items:[]},advances:[],expenses:[],pending:[]});
+    render();
+  });
+}
+function advanceStatus(id){ const s=site(id); const i=STATUSES.indexOf(s.status); if(i<STATUSES.length-1){s.status=STATUSES[i+1];render();} }
+
+function formLine(id){
+  const s=site(id);
+  openForm('Add line item',[
+    {name:'desc',label:'Description',required:true,placeholder:'e.g. Wiring — 2BHK'},
+    {name:'qty',label:'Qty',type:'number',default:1,required:true},
+    {name:'rate',label:'Rate (₹)',type:'number',required:true}
+  ], v=>{
+    const item={desc:v.desc,qty:v.qty,rate:v.rate};
+    (s.bill.active? s.bill.items : s.quote.items).push(item);
+    render();
+  });
+}
+function delLine(id,i){ const s=site(id); (s.bill.active?s.bill.items:s.quote.items).splice(i,1); render(); }
+function convertToBill(id){
+  const s=site(id);
+  if(!s.quote.items.length) return;
+  s.bill={active:true, items: s.quote.items.map(it=>({...it}))};
+  if(s.status==='Quotation Sent') s.status='Confirmed';
+  render();
+}
+
+function formAdvance(id){
+  const s=site(id);
+  openForm('Customer advance',[
+    {name:'amount',label:'Amount (₹)',type:'number',required:true},
+    {name:'mode',type:'mode',default:'Cash'},
+    {name:'date',label:'Date',type:'date',default:today()}
+  ], v=>{ s.advances.push({id:uid(),amount:v.amount,mode:v.mode,date:v.date}); render(); });
+}
+function delAdvance(id,aid){ const s=site(id); s.advances=s.advances.filter(a=>a.id!==aid); render(); }
+
+function formExpense(id){
+  const s=site(id);
+  openForm('Site expense',[
+    {name:'category',label:'Category',type:'select',options:EXP_CATS,default:'Materials'},
+    {name:'amount',label:'Amount (₹)',type:'number',required:true},
+    {name:'mode',type:'mode',default:'Cash'},
+    {name:'date',label:'Date',type:'date',default:today()},
+    {name:'note',label:'Note',type:'text',placeholder:'optional'}
+  ], v=>{ s.expenses.push({id:uid(),category:v.category,amount:v.amount,mode:v.mode,date:v.date,note:v.note}); render(); });
+}
+function delExpense(id,xid){ const s=site(id); s.expenses=s.expenses.filter(x=>x.id!==xid); render(); }
+
+function formPending(id){
+  const s=site(id);
+  openForm('Pending task',[{name:'text',label:'Task',required:true,placeholder:'e.g. Fix bathroom tap'}],
+    v=>{ s.pending.push({id:uid(),text:v.text,done:false}); render(); });
+}
+function togglePending(id,pid){ const s=site(id); const p=s.pending.find(x=>x.id===pid); p.done=!p.done; render(); }
+function delPending(id,pid){ const s=site(id); s.pending=s.pending.filter(x=>x.id!==pid); render(); }
+
+/* ---- Employees ---- */
+function formEmployee(id){
+  const e=id?emp(id):null;
+  openForm(e?'Edit Worker':'New Worker',[
+    {name:'name',label:'Name',required:true,default:e?.name},
+    {name:'phone',label:'Phone',default:e?.phone,placeholder:'9xxxxxxxxx'},
+    {name:'role',label:'Role',type:'select',options:ROLES,default:e?.role||'Helper'},
+    {name:'wage',label:'Daily wage (₹)',type:'number',required:true,default:e?.wage}
+  ], v=>{
+    if(e) Object.assign(e,v);
+    else state.employees.push({id:uid(),name:v.name,phone:v.phone,role:v.role,wage:v.wage,attendance:[],advances:[]});
+    render();
+  });
+}
+// mark attendance from employee detail (choose site)
+function formAttendance(empId){ attendanceForm(empId,null); }
+// mark attendance from a site (choose worker)
+function formAttendanceForSite(siteId){ attendanceForm(null,siteId); }
+function attendanceForm(empId,siteId){
+  if(!state.sites.length){ alert('Add a site first.'); return; }
+  if(!state.employees.length){ alert('Add a worker first.'); return; }
+  const fixedEmp=!!empId, fixedSite=!!siteId;
+  const fields=[];
+  if(!fixedEmp) fields.push({name:'empId',label:'Worker',type:'select',options:state.employees.map(e=>e.name),default:state.employees[0].name});
+  if(!fixedSite) fields.push({name:'siteName',label:'Site',type:'select',options:state.sites.map(s=>s.name),default:state.sites[0].name});
+  fields.push({name:'unit',label:'Day worked',type:'seg',options:['Full','Half','Custom'],default:'Full'});
+  fields.push({name:'hours',label:'Custom hours (if Custom)',type:'number',default:8});
+  fields.push({name:'date',label:'Date',type:'date',default:today()});
+  openForm('Mark attendance',fields,v=>{
+    const e = fixedEmp? emp(empId) : state.employees.find(x=>x.name===v.empId);
+    const s = fixedSite? site(siteId) : state.sites.find(x=>x.name===v.siteName);
+    e.attendance.push({id:uid(),date:v.date,siteId:s.id,unit:v.unit,hours:v.unit==='Custom'?v.hours:0});
+    render();
+  });
+}
+function delAttendance(empId,aid){ const e=emp(empId); e.attendance=e.attendance.filter(a=>a.id!==aid); render(); }
+
+function formWAdvance(empId){
+  const e=emp(empId);
+  openForm('Give worker advance',[
+    {name:'amount',label:'Amount (₹)',type:'number',required:true},
+    {name:'mode',type:'mode',default:'Cash'},
+    {name:'date',label:'Date',type:'date',default:today()}
+  ], v=>{ e.advances.push({id:uid(),amount:v.amount,mode:v.mode,date:v.date}); render(); });
+}
+function delWAdvance(empId,aid){ const e=emp(empId); e.advances=e.advances.filter(a=>a.id!==aid); render(); }
+
+/* ---- Shops ---- */
+function formShop(){
+  const opts = state.sites.length? ['— none —',...state.sites.map(s=>s.name)] : ['— none —'];
+  openForm('New Shop',[
+    {name:'name',label:'Shop name',required:true,placeholder:'e.g. Sunny Hardware'},
+    {name:'siteName',label:'Linked site',type:'select',options:opts,default:opts[0]}
+  ], v=>{
+    const s = state.sites.find(x=>x.name===v.siteName);
+    state.shops.push({id:uid(),name:v.name,siteId:s?s.id:null,received:[],paid:[]});
+    render();
+  });
+}
+function formShopReceive(id){
+  const sh=shop(id);
+  openForm('Received from customer',[
+    {name:'amount',label:'Amount (₹)',type:'number',required:true},
+    {name:'mode',type:'mode',default:'Cash'},
+    {name:'date',label:'Date',type:'date',default:today()}
+  ], v=>{ sh.received.push({id:uid(),amount:v.amount,mode:v.mode,date:v.date}); render(); });
+}
+function formShopPay(id){
+  const sh=shop(id);
+  openForm('Pay shop',[
+    {name:'amount',label:'Amount (₹)',type:'number',required:true,default:shopPending(sh)>0?shopPending(sh):''},
+    {name:'mode',type:'mode',default:'Cash'},
+    {name:'date',label:'Date',type:'date',default:today()}
+  ], v=>{ sh.paid.push({id:uid(),amount:v.amount,mode:v.mode,date:v.date}); render(); });
+}
+
+/* ----------------------------- BOOT ------------------------------- */
+render();
+</script>
+</body>
+</html>
