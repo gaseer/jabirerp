@@ -5,6 +5,16 @@ import type { BaseEntity, NewEntity, OutboxItem, Repo } from "./Repo";
 const nowIso = () => new Date().toISOString();
 const uuid = () => crypto.randomUUID();
 
+// Outbox order IS causal order (push relies on it, and coalescing keeps the
+// last item per row). Two writes in the same millisecond would tie on
+// queued_at and fall back to the random uuid primary key — so force strictly
+// increasing timestamps within this client.
+let lastQueuedMs = 0;
+function nextQueuedAt(): string {
+  lastQueuedMs = Math.max(Date.now(), lastQueuedMs + 1);
+  return new Date(lastQueuedMs).toISOString();
+}
+
 /**
  * Generic Dexie-backed Repo. Local-first: every write lands in IndexedDB
  * immediately and is queued to the outbox for later push to Supabase.
@@ -77,7 +87,7 @@ export class DexieRepo<T extends BaseEntity> implements Repo<T> {
       op,
       row_id: rowId,
       payload,
-      queued_at: nowIso(),
+      queued_at: nextQueuedAt(),
     };
     await db.outbox.put(item);
   }

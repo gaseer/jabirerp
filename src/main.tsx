@@ -5,7 +5,8 @@ import App from "./App";
 import { QueryProvider } from "./providers/QueryProvider";
 import "./index.css";
 
-// Prompt-based SW updates; auto-refresh on new version for simplicity in Slice 0.
+// Auto-updating service worker: precaches the app shell so the PWA opens
+// offline; new versions activate silently on the next launch.
 registerSW({ immediate: true });
 
 createRoot(document.getElementById("root")!).render(

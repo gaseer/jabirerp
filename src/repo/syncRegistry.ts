@@ -18,6 +18,17 @@ export const SYNC_TABLES: SyncTable[] = [
   // documents before line_items so the FK parent syncs first on pull.
   { name: "documents", table: db.documents as unknown as Table<BaseEntity, string> },
   { name: "line_items", table: db.line_items as unknown as Table<BaseEntity, string> },
+  // FK parents of transactions before it. Push order is outbox-chronological
+  // (rows created in causal order push in causal order); pull order just keeps
+  // parents arriving first for label resolution.
+  { name: "employees", table: db.employees as unknown as Table<BaseEntity, string> },
+  { name: "attendance", table: db.attendance as unknown as Table<BaseEntity, string> },
+  { name: "shops", table: db.shops as unknown as Table<BaseEntity, string> },
+  { name: "site_tasks", table: db.site_tasks as unknown as Table<BaseEntity, string> },
+  {
+    name: "transactions",
+    table: db.transactions as unknown as Table<BaseEntity, string>,
+  },
 ];
 
 export function tableFor(name: string): Table<BaseEntity, string> | undefined {

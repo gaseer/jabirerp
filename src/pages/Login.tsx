@@ -20,14 +20,22 @@ export function Login() {
     setBusy(true);
     try {
       if (mode === "up") {
-        await signUp(email, password);
-        setInfo("Account created. If email confirmation is on, check your inbox, then sign in.");
-        setMode("in");
+        const { needsConfirmation } = await signUp(email, password);
+        if (needsConfirmation) {
+          setInfo("Account created. Check your inbox to confirm your email, then sign in.");
+          setMode("in");
+        }
+        // else: confirmation off => session set via onAuthStateChange, app routes in.
       } else {
         await signIn(email, password);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      // A fetch failure while offline is not the user's fault — say so plainly.
+      if (!navigator.onLine) {
+        setError("No internet connection. Connect and try again.");
+      } else {
+        setError(err instanceof Error ? err.message : "Something went wrong");
+      }
     } finally {
       setBusy(false);
     }

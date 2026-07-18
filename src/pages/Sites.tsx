@@ -4,10 +4,19 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { siteRepo } from "@/repo/repos";
 import { sync } from "@/repo/SupabaseSync";
 import type { SiteRow, SiteStatus, WorkType } from "@/lib/db";
+import { matchesQuery } from "@/lib/search";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { SearchInput } from "@/components/SearchInput";
+
+type SiteSort = "recent" | "name" | "active";
+const SORT_LABELS: Record<SiteSort, string> = {
+  recent: "Recently updated",
+  name: "Name A–Z",
+  active: "Active first",
+};
 
 const WORK_TYPES: WorkType[] = ["Electrical", "Plumbing", "Mixed"];
 const STATUSES: SiteStatus[] = ["Active", "Completed"];
@@ -33,11 +42,32 @@ export function Sites() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [form, setForm] = useState<FormState | null>(null);
+  const [q, setQ] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"" | SiteStatus>("");
+  const [sort, setSort] = useState<SiteSort>("recent");
 
   const { data: sites = [] } = useQuery({
     queryKey: ["sites"],
     queryFn: () => siteRepo.getAll(),
   });
+
+  // getAll returns updated_at desc — "recent" keeps that order.
+  const visible = sites
+    .filter(
+      (s) =>
+        (!statusFilter || s.status === statusFilter) &&
+        matchesQuery(q, s.name, s.location, s.phone),
+    )
+    .sort((a, b) => {
+      if (sort === "name") return a.name.localeCompare(b.name);
+      if (sort === "active")
+        return a.status === b.status
+          ? a.name.localeCompare(b.name)
+          : a.status === "Active"
+            ? -1
+            : 1;
+      return 0;
+    });
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["sites"] });
 
@@ -160,8 +190,43 @@ export function Sites() {
           <p>No sites yet. Tap ＋ to add your first job.</p>
         </Card>
       ) : (
+        <>
+          <div className="space-y-2">
+            <SearchInput value={q} onChange={setQ} placeholder="Search name, location, phone…" />
+            <div className="grid grid-cols-2 gap-2">
+              <Select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as "" | SiteStatus)}
+                className="h-9 text-sm"
+              >
+                <option value="">All statuses</option>
+                {STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SiteSort)}
+                className="h-9 text-sm"
+              >
+                {Object.entries(SORT_LABELS).map(([k, label]) => (
+                  <option key={k} value={k}>
+                    ↕ {label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+
+          {visible.length === 0 ? (
+            <Card className="py-6 text-center text-sm text-muted">
+              No sites match the search/filter.
+            </Card>
+          ) : (
         <div className="space-y-2">
-          {sites.map((s) => (
+          {visible.map((s) => (
             <Card key={s.id} className="flex items-center justify-between gap-3">
               <button
                 className="min-w-0 flex-1 text-left"
@@ -198,6 +263,8 @@ export function Sites() {
             </Card>
           ))}
         </div>
+          )}
+        </>
       )}
     </div>
   );

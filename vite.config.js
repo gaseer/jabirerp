@@ -7,7 +7,9 @@ export default defineConfig({
     plugins: [
         react(),
         VitePWA({
-            registerType: "prompt",
+            // autoUpdate: new deploys activate on next launch without a prompt UI —
+            // "prompt" needs an update banner we never built, so updates were stuck.
+            registerType: "autoUpdate",
             includeAssets: ["favicon.svg", "pwa-icon.svg"],
             manifest: {
                 name: "Power Plus",

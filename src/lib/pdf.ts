@@ -1,8 +1,11 @@
-import type { DocKind, LineItemRow, SiteRow } from "@/lib/db";
-import { formatPaise } from "@/lib/money";
 import { documentTotalPaise } from "@/domain/quotation";
+import type { DocKind, LineItemRow, SiteRow } from "@/lib/db";
+import { formatPaisePdf } from "@/lib/money";
 
-const BRAND = "Power Plus";
+export const BRAND = "Power Plus";
+// Contractor's phone, shown under the brand on every PDF. Empty = hidden.
+// (Was "POWERPLUS" — a placeholder that printed as literal text on client PDFs.)
+export const BRAND_PHONE = "";
 
 /**
  * Build + share a quotation/bill PDF for a site. Customer-facing: shows the
@@ -28,9 +31,16 @@ export async function shareDocumentPdf(
   doc.setFontSize(20);
   doc.setTextColor("#2563eb");
   doc.text(BRAND, marginX, 50);
+  if (BRAND_PHONE) {
+    doc.setFontSize(9);
+    doc.setTextColor("#7b8494");
+    doc.text(BRAND_PHONE, marginX, 63);
+  }
   doc.setFontSize(14);
   doc.setTextColor("#1c2430");
-  doc.text(title, doc.internal.pageSize.getWidth() - marginX, 50, { align: "right" });
+  doc.text(title, doc.internal.pageSize.getWidth() - marginX, 50, {
+    align: "right",
+  });
 
   doc.setFontSize(10);
   doc.setTextColor("#7b8494");
@@ -40,7 +50,9 @@ export async function shareDocumentPdf(
   doc.text(site.name, marginX, 100);
   doc.setFontSize(10);
   doc.setTextColor("#7b8494");
-  const meta = [site.location, site.phone, site.work_type].filter(Boolean).join("  ·  ");
+  const meta = [site.location, site.phone, site.work_type]
+    .filter(Boolean)
+    .join("  ·  ");
   if (meta) doc.text(meta, marginX, 116);
 
   const total = documentTotalPaise(items);
@@ -54,10 +66,10 @@ export async function shareDocumentPdf(
       String(i + 1),
       it.description,
       String(it.qty),
-      formatPaise(it.rate_paise),
-      formatPaise(it.amount_paise),
+      formatPaisePdf(it.rate_paise),
+      formatPaisePdf(it.amount_paise),
     ]),
-    foot: [["", "", "", "Total", formatPaise(total)]],
+    foot: [["", "", "", "Total", formatPaisePdf(total)]],
     styles: { fontSize: 10, cellPadding: 6, overflow: "linebreak" },
     headStyles: { fillColor: [37, 99, 235], textColor: 255 },
     footStyles: {
@@ -79,8 +91,12 @@ export async function shareDocumentPdf(
   await shareOrDownloadBlob(doc.output("blob"), slugFilename(kind, site.name));
 }
 
-async function shareOrDownloadBlob(blob: Blob, filename: string): Promise<void> {
-  const file = new File([blob], filename, { type: "application/pdf" });
+export async function shareOrDownloadBlob(
+  blob: Blob,
+  filename: string,
+  mime = "application/pdf",
+): Promise<void> {
+  const file = new File([blob], filename, { type: mime });
   const nav = navigator as Navigator & {
     canShare?: (data: { files: File[] }) => boolean;
   };
@@ -100,7 +116,11 @@ async function shareOrDownloadBlob(blob: Blob, filename: string): Promise<void> 
   URL.revokeObjectURL(url);
 }
 
-export function slugFilename(prefix: string, name: string): string {
-  const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  return `${prefix}-${slug || "document"}.pdf`;
+export function slugFilename(prefix: string, name: string, ext = "pdf"): string {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return `${prefix}-${slug || "document"}.${ext}`;
 }

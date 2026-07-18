@@ -10,6 +10,7 @@ const NAV = [
   { to: "/workers", label: "Workers", icon: "👷" },
   { to: "/ledger", label: "Ledger", icon: "📒" },
   { to: "/shops", label: "Shops", icon: "🏪" },
+  { to: "/reports", label: "P&L", icon: "📊" },
 ];
 
 export function AppShell() {
@@ -75,7 +76,7 @@ export function AppShell() {
       </div>
 
       {/* Bottom nav (mobile) */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] md:hidden">
         {NAV.map((n) => (
           <NavLink
             key={n.to}

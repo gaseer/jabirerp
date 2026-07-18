@@ -7,7 +7,11 @@ import { Login } from "@/pages/Login";
 import { Dashboard } from "@/pages/Dashboard";
 import { Sites } from "@/pages/Sites";
 import { SiteDetail } from "@/pages/SiteDetail";
-import { Placeholder } from "@/pages/Placeholder";
+import { Workers } from "@/pages/Workers";
+import { WorkerDetail } from "@/pages/WorkerDetail";
+import { Ledger } from "@/pages/Ledger";
+import { Shops } from "@/pages/Shops";
+import { Reports } from "@/pages/Reports";
 
 export default function App() {
   const { user, loading, init } = useAuth();
@@ -16,14 +20,17 @@ export default function App() {
     init();
   }, [init]);
 
-  // On login, mirror the auth user into the local profiles store via the Repo.
-  // This exercises the full local-first write path (Dexie + outbox) end to end.
+  // On login, mirror the auth user into the local profiles store via the Repo —
+  // but only when it actually changed: an unconditional put would dirty and
+  // enqueue a profile push on every app launch.
   useEffect(() => {
     if (!user) return;
-    profileRepo.put({
-      id: user.id,
-      display_name:
-        (user.user_metadata?.display_name as string | undefined) ?? null,
+    const display_name =
+      (user.user_metadata?.display_name as string | undefined) ?? null;
+    profileRepo.getById(user.id).then((existing) => {
+      if (!existing || existing.display_name !== display_name) {
+        profileRepo.put({ id: user.id, display_name });
+      }
     });
   }, [user]);
 
@@ -44,9 +51,11 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="sites" element={<Sites />} />
           <Route path="sites/:id" element={<SiteDetail />} />
-          <Route path="workers" element={<Placeholder icon="👷" title="Workers" slice="Slice 6" />} />
-          <Route path="ledger" element={<Placeholder icon="📒" title="Ledger" slice="Slice 3" />} />
-          <Route path="shops" element={<Placeholder icon="🏪" title="Shops" slice="Slice 9" />} />
+          <Route path="workers" element={<Workers />} />
+          <Route path="workers/:id" element={<WorkerDetail />} />
+          <Route path="ledger" element={<Ledger />} />
+          <Route path="shops" element={<Shops />} />
+          <Route path="reports" element={<Reports />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
