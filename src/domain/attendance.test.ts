@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { attendanceRepo, employeeRepo } from "@/repo/repos";
 import { useAuth } from "@/store/auth";
-import { markAttendance } from "./attendance";
+import { editAttendance, markAttendance } from "./attendance";
 
 let EMP = "";
 
@@ -86,5 +86,60 @@ describe("markAttendance overlap guard", () => {
     await expect(mark("09:00", "17:00")).rejects.toThrow();
     const queued = await db.outbox.toArray();
     expect(queued.filter((o) => o.table === "attendance")).toHaveLength(1);
+  });
+});
+
+describe("editAttendance", () => {
+  const edit = (
+    id: string,
+    startTime: string,
+    endTime: string,
+    workDate = "2026-07-18",
+    siteId = "site-1",
+  ) => editAttendance(id, { employeeId: EMP, siteId, workDate, startTime, endTime });
+
+  it("updates times in place and re-snapshots hours + wage", async () => {
+    const a = await mark("09:00", "17:00");
+    const updated = await edit(a.id, "09:00", "13:00");
+    expect(updated.id).toBe(a.id);
+    expect(updated.hours).toBe(4);
+    expect(updated.wage_paise).toBe(40000);
+    expect(await db.attendance.count()).toBe(1);
+  });
+
+  it("does not clash with itself", async () => {
+    const a = await mark("09:00", "17:00");
+    await expect(edit(a.id, "09:00", "17:30")).resolves.toBeTruthy(); // same window, widened
+    await expect(edit(a.id, "09:00", "17:00")).resolves.toBeTruthy(); // unchanged
+  });
+
+  it("still blocks overlap with another shift that day", async () => {
+    await mark("09:00", "13:00");
+    const b = await mark("14:00", "18:00");
+    await expect(edit(b.id, "12:00", "18:00")).rejects.toThrow("Already marked");
+    // untouched on failure
+    expect((await db.attendance.get(b.id))?.start_time).toBe("14:00");
+  });
+
+  it("can move a shift to another date and site", async () => {
+    const a = await mark("09:00", "17:00");
+    const moved = await edit(a.id, "09:00", "17:00", "2026-07-19", "site-2");
+    expect(moved.work_date).toBe("2026-07-19");
+    expect(moved.site_id).toBe("site-2");
+  });
+
+  it("rejects an end time before the start", async () => {
+    const a = await mark("09:00", "17:00");
+    await expect(edit(a.id, "17:00", "09:00")).rejects.toThrow(
+      "End time must be after start time",
+    );
+  });
+
+  it("refuses to edit a soft-deleted entry", async () => {
+    const a = await mark("09:00", "17:00");
+    await attendanceRepo.softDelete(a.id);
+    await expect(edit(a.id, "09:00", "13:00")).rejects.toThrow(
+      "Attendance entry not found",
+    );
   });
 });

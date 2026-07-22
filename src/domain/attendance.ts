@@ -49,14 +49,12 @@ export interface MarkAttendanceInput {
 }
 
 /**
- * Record a worked shift. Snapshots the wage: computes wage_paise from the
- * employee's CURRENT hourly wage and the shift length, and stores both —
- * future wage edits only affect future attendance. Multiple shifts per day
- * are allowed (two sites in one day is legitimate), but a shift may not
- * OVERLAP an existing one — a worker can't be in two places at once, and this
- * is what blocks accidental duplicate marking. Overnight shifts are not allowed.
+ * Validate + build the stored shape of a shift. `ignoreId` is the row being
+ * edited: it must not clash with itself, but every OTHER live shift for that
+ * worker on that date still blocks. Everything else (time validity, positive
+ * length, wage snapshot) is identical for create and edit.
  */
-export async function markAttendance(input: MarkAttendanceInput): Promise<AttendanceRow> {
+async function buildShift(input: MarkAttendanceInput, ignoreId?: string) {
   const employee = await employeeRepo.getById(input.employeeId);
   if (!employee) throw new Error("Worker not found");
   if (!isValidTime(input.startTime) || !isValidTime(input.endTime))
@@ -69,13 +67,14 @@ export async function markAttendance(input: MarkAttendanceInput): Promise<Attend
     to: input.workDate,
   });
   const clash = sameDay.find(
-    (r) => input.startTime < r.end_time && r.start_time < input.endTime,
+    (r) =>
+      r.id !== ignoreId && input.startTime < r.end_time && r.start_time < input.endTime,
   );
   if (clash)
     throw new Error(
       `Already marked ${timeRangeLabel(clash.start_time, clash.end_time)} on this date`,
     );
-  return attendanceRepo.put({
+  return {
     employee_id: input.employeeId,
     site_id: input.siteId,
     work_date: input.workDate,
@@ -83,5 +82,34 @@ export async function markAttendance(input: MarkAttendanceInput): Promise<Attend
     end_time: input.endTime,
     hours,
     wage_paise: attendanceWagePaise(employee.hourly_wage_paise, hours),
-  });
+  };
+}
+
+/**
+ * Record a worked shift. Snapshots the wage: computes wage_paise from the
+ * employee's CURRENT hourly wage and the shift length, and stores both —
+ * future wage edits only affect future attendance. Multiple shifts per day
+ * are allowed (two sites in one day is legitimate), but a shift may not
+ * OVERLAP an existing one — a worker can't be in two places at once, and this
+ * is what blocks accidental duplicate marking. Overnight shifts are not allowed.
+ */
+export async function markAttendance(input: MarkAttendanceInput): Promise<AttendanceRow> {
+  return attendanceRepo.put(await buildShift(input));
+}
+
+/**
+ * Correct an existing shift (wrong times / date / site picked). Runs the same
+ * overlap guard as marking, minus this row itself, so a mis-typed shift can be
+ * fixed in place without the "Already marked" error firing on its own entry.
+ * The wage is re-snapshotted at the worker's current hourly rate, since the
+ * hours may have changed — an edit is a write, not a recompute of history.
+ */
+export async function editAttendance(
+  id: string,
+  input: MarkAttendanceInput,
+): Promise<AttendanceRow> {
+  const existing = await attendanceRepo.getById(id);
+  if (!existing || existing.deleted_at !== null)
+    throw new Error("Attendance entry not found");
+  return attendanceRepo.put({ ...existing, ...(await buildShift(input, id)) });
 }

@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { EmployeeRow, TxnMode } from "@/lib/db";
 import { attendanceRepo, employeeRepo, siteRepo, transactionRepo } from "@/repo/repos";
 import { sync } from "@/repo/SupabaseSync";
-import { listAttendance, markAttendance } from "@/domain/attendance";
+import { editAttendance, listAttendance, markAttendance } from "@/domain/attendance";
 import { addWorkerPayment, listTxns, sumPaise } from "@/domain/transactions";
 import { buildSettlement } from "@/domain/settlement";
 import {
@@ -93,15 +93,14 @@ export function WorkerDetail() {
   );
 }
 
+const BLANK_SHIFT = { siteId: "", date: todayIso(), start: "09:00", end: "17:00" };
+
 function AttendanceTab({ worker }: { worker: EmployeeRow }) {
   const qc = useQueryClient();
   const [range, setRange] = useState<DateRange>({});
-  const [form, setForm] = useState({
-    siteId: "",
-    date: todayIso(),
-    start: "09:00",
-    end: "17:00",
-  });
+  const [form, setForm] = useState(BLANK_SHIFT);
+  // Non-null = the form is editing that existing entry instead of adding one.
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const { data: sites = [] } = useQuery({
@@ -121,32 +120,56 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
   };
 
   const mark = useMutation({
-    mutationFn: () =>
-      markAttendance({
+    mutationFn: () => {
+      const input = {
         employeeId: worker.id,
         siteId: form.siteId,
         workDate: form.date,
         startTime: form.start,
         endTime: form.end,
-      }),
+      };
+      return editingId ? editAttendance(editingId, input) : markAttendance(input);
+    },
     onSuccess: () => {
       pushSoon();
       setErr(null);
+      if (editingId) cancelEdit();
       refresh();
     },
     onError: (e) => setErr(e instanceof Error ? e.message : "Could not save"),
   });
+
+  function startEdit(row: (typeof rows)[number]) {
+    setEditingId(row.id);
+    setErr(null);
+    setForm({
+      siteId: row.site_id,
+      date: row.work_date,
+      start: row.start_time,
+      end: row.end_time,
+    });
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setErr(null);
+    setForm(BLANK_SHIFT);
+  }
 
   const remove = useMutation({
     mutationFn: async (rowId: string) => {
       await attendanceRepo.softDelete(rowId);
       pushSoon();
     },
-    onSuccess: refresh,
+    onSuccess: (_void, rowId) => {
+      if (editingId === rowId) cancelEdit(); // don't leave the form editing a deleted row
+      refresh();
+    },
   });
 
-  // Duplicate guard: surface existing entries for the chosen date.
-  const sameDay = rows.filter((r) => r.work_date === form.date);
+  // Duplicate guard: surface existing entries for the chosen date. The entry
+  // being edited is not a duplicate of itself, so it never shows here.
+  const sameDay = rows.filter((r) => r.work_date === form.date && r.id !== editingId);
 
   // Live preview: hours + wage the entry will store.
   const timesValid = isValidTime(form.start) && isValidTime(form.end);
@@ -164,7 +187,9 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
   return (
     <div className="space-y-3">
       <Card className="space-y-3">
-        <div className="font-semibold">Mark attendance</div>
+        <div className="font-semibold">
+          {editingId ? "Edit attendance" : "Mark attendance"}
+        </div>
         <form onSubmit={submit} className="space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <Select
@@ -229,9 +254,16 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
             </p>
           )}
           {err && <p className="text-sm text-red">{err}</p>}
-          <Button type="submit" size="sm" disabled={mark.isPending || previewHours <= 0}>
-            ✓ Mark attendance
-          </Button>
+          <div className="flex gap-2">
+            <Button type="submit" size="sm" disabled={mark.isPending || previewHours <= 0}>
+              {editingId ? "✓ Save changes" : "✓ Mark attendance"}
+            </Button>
+            {editingId && (
+              <Button type="button" size="sm" variant="soft" onClick={cancelEdit}>
+                Cancel
+              </Button>
+            )}
+          </div>
         </form>
       </Card>
 
@@ -243,7 +275,13 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
         ) : (
           <div className="divide-y divide-border">
             {rows.map((r) => (
-              <div key={r.id} className="flex items-center gap-2 py-2">
+              <div
+                key={r.id}
+                className={cn(
+                  "flex items-center gap-2 py-2",
+                  editingId === r.id && "text-primary",
+                )}
+              >
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium">
                     {formatDate(r.work_date)} · {hoursLabel(r.hours)}
@@ -254,6 +292,13 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
                   </div>
                 </div>
                 <div className="font-semibold">{formatPaise(r.wage_paise)}</div>
+                <button
+                  className="text-primary"
+                  aria-label="Edit attendance"
+                  onClick={() => startEdit(r)}
+                >
+                  ✏️
+                </button>
                 <button
                   className="text-red"
                   aria-label="Delete attendance"

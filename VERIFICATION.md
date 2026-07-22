@@ -77,6 +77,10 @@ For each of: **Quotation/Bill** (site → Quotation/Bill tab), **Advance stateme
 - [ ] Edit a worker's hourly wage → past attendance amounts UNCHANGED (snapshot at write); new attendance uses the new wage. UI notes this on the edit form.
 - [ ] Two NON-overlapping shifts same day (two sites) allowed; form shows the duplicate-day hint with each shift's time range.
 - [ ] Marking a shift that overlaps an existing one (same worker, same date — including an exact duplicate re-submit) → "Already marked …" error, nothing saved, nothing queued. Works from both the Worker detail form and the Site Workers tab.
+- [ ] **Edit a shift** (✏️ on an entry — Worker detail → Attendance history, and Site → Workers tab → "Shifts at this site"): form switches to "Edit attendance", prefilled with that entry's worker/site/date/times; Save changes updates the SAME row (no new row appears), hours + wage recompute, site wages/worker balance follow. Cancel restores a blank add-form.
+- [ ] Editing an entry without widening it into a neighbour → saves cleanly; the entry does NOT trigger "Already marked …" against itself, and the amber duplicate hint hides its own row.
+- [ ] Editing an entry so it OVERLAPS another shift that day → "Already marked …" error, original row unchanged.
+- [ ] Delete the entry currently being edited → form resets to add mode (no orphan edit state).
 - [ ] Settlement PDF attendance section shows Time (e.g. "1:00 PM – 3:00 PM") + Hours columns; totals match on-screen.
 - [ ] Pre-existing local data from the daily-wage build (if any): app upgrade converts wage to hourly (÷8) and old entries to synthetic 9:00 AM shifts — recorded wage amounts unchanged.
 - [ ] Settlement with range: opening balance = everything strictly before `from`; opening + period wages − period paid = balance payable (check the arithmetic on-screen).
@@ -88,7 +92,7 @@ For each of: **Quotation/Bill** (site → Quotation/Bill tab), **Advance stateme
 - [ ] **Sites → detail**: 6 tabs (Overview | Quotation/Bill | Advances | Expenses | Workers | Tasks); `?tab=` survives refresh; unknown tab falls back to Overview.
 - [ ] **Quotation/Bill regression** (pure move — must behave EXACTLY as before): add/edit/remove line items, totals, share PDF, convert to bill (quotation view replaced by bill after convert).
 - [ ] **Advances/Expenses tabs**: add + soft-delete only (NO edit on money rows — correction = delete + re-add), period totals, expense category select.
-- [ ] **Site Workers tab**: per-worker hours worked + wages for THIS site only; mark-attendance (time pickers + wage preview) preselects the site.
+- [ ] **Site Workers tab**: per-worker hours worked + wages for THIS site only; mark-attendance (time pickers + wage preview) preselects the site; "Shifts at this site" lists each entry with an ✏️ edit.
 - [ ] **Tasks tab**: add, toggle check/strikethrough, delete, "No pending works 🎉" empty state, oldest first.
 - [ ] **Workers page**: card shows role, wage/hr, balance (amber payable / green settled / "advance given"); detail has Attendance | Payments | Settlement tabs.
 - [ ] **Ledger**: IN/OUT badges, Cash/Bank tags, party names (site · category for expenses), filters + Clear-all.
