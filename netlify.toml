@@ -1,0 +1,47 @@
+# Netlify build + hosting config. Checked in so the deploy is reproducible and
+# does not depend on settings typed into the Netlify UI.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+  # Vite inlines every VITE_* variable into the client bundle BY DESIGN — that
+  # is the only way the browser can reach Supabase. The anon key is a public,
+  # RLS-guarded key, so this is safe. Netlify's secrets scanner does not know
+  # that: it finds the values inside dist/assets/*.js and fails the deploy
+  # ("Secrets scanning found secrets in build output"). Omitting these two keys
+  # from the scan is the documented fix. Never add a SERVICE ROLE key here.
+  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_URL,VITE_SUPABASE_ANON_KEY"
+
+# SPA fallback: react-router owns /sites/:id etc., so every unmatched path must
+# serve index.html instead of Netlify's 404. Mirrors public/_redirects (which
+# covers manual dist uploads); netlify.toml wins when both are present.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# PWA cache correctness: the HTML shell and the service worker must never be
+# cached by the CDN/browser, or a deploy can leave users pinned to an old
+# bundle. Hashed assets are immutable and cache forever.
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

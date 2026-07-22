@@ -8,3 +8,7 @@ dist-ssr
 dev-dist
 coverage
 *.tsbuildinfo
+# tsc -b output for tsconfig.node.json — never commit, Vite prefers .js over .ts
+vite.config.js
+vite.config.d.ts
+.netlify

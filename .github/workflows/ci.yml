@@ -1,0 +1,38 @@
+name: CI
+
+# Netlify does the deploying (it builds on every push to main via the GitHub
+# app). This workflow is the gate that tells you a push is broken BEFORE you
+# go looking at the live site: same Node version, same install, typecheck,
+# tests, and a real production build.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc -b
+
+      - name: Tests
+        run: npm test
+
+      # Builds with empty Supabase vars on purpose: this proves the bundle
+      # compiles without secrets. The REAL values are injected by Netlify at
+      # its own build time — do not add them here.
+      - name: Production build
+        run: npm run build
+
+      - name: Fail if the SPA fallback is missing from dist
+        run: test -f dist/_redirects
