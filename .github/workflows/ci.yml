@@ -28,11 +28,15 @@ jobs:
       - name: Tests
         run: npm test
 
-      # Builds with empty Supabase vars on purpose: this proves the bundle
+      # Builds with no Supabase vars on purpose: this proves the bundle
       # compiles without secrets. The REAL values are injected by Netlify at
-      # its own build time — do not add them here.
+      # its own build time — do not add them here. SKIP_ENV_CHECK bypasses the
+      # vite.config.ts guard that (correctly) fails a real deploy when the
+      # Supabase vars are missing.
       - name: Production build
         run: npm run build
+        env:
+          SKIP_ENV_CHECK: "1"
 
       - name: Fail if the SPA fallback is missing from dist
         run: test -f dist/_redirects
