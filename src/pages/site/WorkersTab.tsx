@@ -19,6 +19,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Modal } from "@/components/ui/modal";
 
 const pushSoon = () => sync.sync().catch(() => {});
 
@@ -123,103 +124,112 @@ export function WorkersTab({ site }: { site: SiteRow }) {
     mark.mutate();
   }
 
+  const shiftForm = (
+    <form onSubmit={submit} className="space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        <Select
+          value={form.employeeId}
+          onChange={(e) => setForm({ ...form, employeeId: e.target.value })}
+        >
+          <option value="">Worker…</option>
+          {employees.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.name}
+            </option>
+          ))}
+        </Select>
+        <Input
+          type="date"
+          value={form.date}
+          onChange={(e) => setForm({ ...form, date: e.target.value })}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="text-xs text-muted">
+          From
+          <Input
+            type="time"
+            className="mt-1"
+            value={form.start}
+            onChange={(e) => setForm({ ...form, start: e.target.value })}
+            required
+          />
+        </label>
+        <label className="text-xs text-muted">
+          To
+          <Input
+            type="time"
+            className="mt-1"
+            value={form.end}
+            onChange={(e) => setForm({ ...form, end: e.target.value })}
+            required
+          />
+        </label>
+      </div>
+      {previewHours > 0 ? (
+        selected && (
+          <p className="text-sm text-muted">
+            {hoursLabel(previewHours)} × {formatPaise(selected.hourly_wage_paise)}
+            /hr ={" "}
+            <span className="font-semibold text-text">
+              {formatPaise(
+                attendanceWagePaise(selected.hourly_wage_paise, previewHours),
+              )}
+            </span>
+          </p>
+        )
+      ) : (
+        <p className="text-sm text-red">End time must be after start time.</p>
+      )}
+      {otherSameDay.length > 0 && (
+        <p className="text-xs text-amber">
+          Already marked on {formatDate(form.date)}:{" "}
+          {otherSameDay
+            .map((r) => timeRangeLabel(r.start_time, r.end_time))
+            .join(", ")}
+        </p>
+      )}
+      {err && <p className="text-sm text-red">{err}</p>}
+      <div className="flex gap-2">
+        <Button
+          type="submit"
+          size="sm"
+          disabled={mark.isPending || previewHours <= 0}
+        >
+          {editingId ? "✓ Save changes" : "✓ Mark attendance"}
+        </Button>
+        {editingId && (
+          <Button type="button" size="sm" variant="soft" onClick={cancelEdit}>
+            Cancel
+          </Button>
+        )}
+      </div>
+    </form>
+  );
+
   return (
     <div className="space-y-3">
-      <Card className="space-y-3">
-        <div className="font-semibold">
-          {editingId ? "Edit attendance" : "Mark attendance"} at {site.name}
-        </div>
-        {employees.length === 0 ? (
-          <p className="text-sm text-muted">
-            No workers yet — add them on the{" "}
-            <Link to="/workers" className="text-primary">
-              Workers
-            </Link>{" "}
-            page first.
-          </p>
-        ) : (
-          <form onSubmit={submit} className="space-y-2">
-            <div className="grid grid-cols-2 gap-2">
-              <Select
-                value={form.employeeId}
-                onChange={(e) => setForm({ ...form, employeeId: e.target.value })}
-              >
-                <option value="">Worker…</option>
-                {employees.map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.name}
-                  </option>
-                ))}
-              </Select>
-              <Input
-                type="date"
-                value={form.date}
-                onChange={(e) => setForm({ ...form, date: e.target.value })}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="text-xs text-muted">
-                From
-                <Input
-                  type="time"
-                  className="mt-1"
-                  value={form.start}
-                  onChange={(e) => setForm({ ...form, start: e.target.value })}
-                  required
-                />
-              </label>
-              <label className="text-xs text-muted">
-                To
-                <Input
-                  type="time"
-                  className="mt-1"
-                  value={form.end}
-                  onChange={(e) => setForm({ ...form, end: e.target.value })}
-                  required
-                />
-              </label>
-            </div>
-            {previewHours > 0 ? (
-              selected && (
-                <p className="text-sm text-muted">
-                  {hoursLabel(previewHours)} × {formatPaise(selected.hourly_wage_paise)}
-                  /hr ={" "}
-                  <span className="font-semibold text-text">
-                    {formatPaise(
-                      attendanceWagePaise(selected.hourly_wage_paise, previewHours),
-                    )}
-                  </span>
-                </p>
-              )
-            ) : (
-              <p className="text-sm text-red">End time must be after start time.</p>
-            )}
-            {otherSameDay.length > 0 && (
-              <p className="text-xs text-amber">
-                Already marked on {formatDate(form.date)}:{" "}
-                {otherSameDay
-                  .map((r) => timeRangeLabel(r.start_time, r.end_time))
-                  .join(", ")}
-              </p>
-            )}
-            {err && <p className="text-sm text-red">{err}</p>}
-            <div className="flex gap-2">
-              <Button
-                type="submit"
-                size="sm"
-                disabled={mark.isPending || previewHours <= 0}
-              >
-                {editingId ? "✓ Save changes" : "✓ Mark attendance"}
-              </Button>
-              {editingId && (
-                <Button type="button" size="sm" variant="soft" onClick={cancelEdit}>
-                  Cancel
-                </Button>
-              )}
-            </div>
-          </form>
-        )}
-      </Card>
+      {/* Add form inline; editing a shift opens it in a modal over the tapped
+          row instead of jumping up to the top of the page. */}
+      {!editingId && (
+        <Card className="space-y-3">
+          <div className="font-semibold">Mark attendance at {site.name}</div>
+          {employees.length === 0 ? (
+            <p className="text-sm text-muted">
+              No workers yet — add them on the{" "}
+              <Link to="/workers" className="text-primary">
+                Workers
+              </Link>{" "}
+              page first.
+            </p>
+          ) : (
+            shiftForm
+          )}
+        </Card>
+      )}
+      <Modal open={editingId !== null} onClose={cancelEdit} title="Edit attendance">
+        {editingId && shiftForm}
+      </Modal>
 
       <Card className="space-y-3">
         <div className="font-semibold">Workers on this site</div>

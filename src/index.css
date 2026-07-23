@@ -25,3 +25,39 @@ select,
 textarea {
   font-size: 16px; /* prevents iOS zoom on focus */
 }
+
+/* Modal (src/components/ui/modal.tsx) enter animations. */
+@keyframes modal-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-backdrop {
+  animation: modal-fade 0.15s ease-out;
+}
+
+.modal-panel {
+  animation: modal-rise 0.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-backdrop,
+  .modal-panel {
+    animation: none;
+  }
+}

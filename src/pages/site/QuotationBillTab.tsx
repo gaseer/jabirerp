@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { DocKind, SiteRow } from "@/lib/db";
 import { lineItemRepo } from "@/repo/repos";
@@ -16,6 +16,7 @@ import { formatPaise, toPaise } from "@/lib/money";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
 
 const pushSoon = () => sync.sync().catch(() => {});
 
@@ -29,18 +30,22 @@ export function QuotationBillTab({ site }: { site: SiteRow }) {
   return <DocumentSection site={site} kind={showBill ? "bill" : "quotation"} />;
 }
 
+type ItemFields = { description: string; qty: string; rate: string };
+const BLANK_ITEM: ItemFields = { description: "", qty: "1", rate: "" };
+
 function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
   const qc = useQueryClient();
   const siteId = site.id;
   const isBill = kind === "bill";
   const heading = isBill ? "Bill" : "Quotation";
 
-  const [form, setForm] = useState<{
-    id?: string;
-    description: string;
-    qty: string;
-    rate: string;
-  }>({ description: "", qty: "1", rate: "" });
+  // Add-bar state (kept separate from the edit modal so an in-progress row
+  // isn't clobbered when you tap an existing item to edit it).
+  const [form, setForm] = useState<ItemFields>(BLANK_ITEM);
+  // Non-null = editing that existing row in the modal.
+  const [edit, setEdit] = useState<(ItemFields & { id: string }) | null>(null);
+  // Refocus Description after each add so 100s of rows go in without re-tapping.
+  const descRef = useRef<HTMLInputElement>(null);
 
   const bundleKey = ["docbundle", siteId, kind];
   const { data: bundle } = useQuery({
@@ -57,15 +62,15 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
   const previewAmount = lineAmountPaise(Number(form.qty) || 0, toPaise(form.rate));
 
   const saveItem = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (payload: ItemFields & { id?: string }) => {
       const doc = await ensureDocument(siteId, kind);
-      const qty = Number(form.qty) || 0;
-      const ratePaise = toPaise(form.rate);
-      const existing = form.id ? items.find((i) => i.id === form.id) : undefined;
+      const qty = Number(payload.qty) || 0;
+      const ratePaise = toPaise(payload.rate);
+      const existing = payload.id ? items.find((i) => i.id === payload.id) : undefined;
       await lineItemRepo.put({
-        id: form.id,
+        id: payload.id,
         document_id: doc.id,
-        description: form.description.trim(),
+        description: payload.description.trim(),
         qty,
         rate_paise: ratePaise,
         amount_paise: lineAmountPaise(qty, ratePaise),
@@ -74,9 +79,14 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
       });
       pushSoon();
     },
-    onSuccess: () => {
-      setForm({ description: "", qty: "1", rate: "" });
+    onSuccess: (_void, payload) => {
       qc.invalidateQueries({ queryKey: bundleKey });
+      if (payload.id) {
+        setEdit(null);
+      } else {
+        setForm(BLANK_ITEM);
+        descRef.current?.focus();
+      }
     },
   });
 
@@ -85,7 +95,10 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
       await lineItemRepo.softDelete(itemId);
       pushSoon();
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: bundleKey }),
+    onSuccess: () => {
+      setEdit(null);
+      qc.invalidateQueries({ queryKey: bundleKey });
+    },
   });
 
   const convert = useMutation({
@@ -104,27 +117,74 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
     await shareDocumentXlsx(site, kind, items);
   }
 
-  function submit(e: FormEvent) {
+  function submitAdd(e: FormEvent) {
     e.preventDefault();
-    if (!form.description.trim()) return;
-    saveItem.mutate();
+    if (!form.description.trim() || saveItem.isPending) return;
+    saveItem.mutate(form);
+  }
+
+  function submitEdit(e: FormEvent) {
+    e.preventDefault();
+    if (!edit || !edit.description.trim() || saveItem.isPending) return;
+    saveItem.mutate(edit);
   }
 
   return (
     <>
       <Card className="space-y-3">
-        <div className="font-semibold">{heading}</div>
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="font-semibold">{heading}</span>
+          <span className="text-xs text-muted">
+            {items.length} {items.length === 1 ? "item" : "items"}
+          </span>
+        </div>
+
+        {/* Add bar pinned above the list so it stays reachable at any length. */}
+        <form onSubmit={submitAdd} className="space-y-2">
+          <Input
+            ref={descRef}
+            placeholder="Description"
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+          />
+          <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+            <Input
+              placeholder="Qty"
+              inputMode="decimal"
+              value={form.qty}
+              onChange={(e) => setForm({ ...form, qty: e.target.value })}
+            />
+            <Input
+              placeholder="Rate ₹"
+              inputMode="decimal"
+              value={form.rate}
+              onChange={(e) => setForm({ ...form, rate: e.target.value })}
+            />
+            <Button type="submit" size="md" disabled={saveItem.isPending}>
+              ＋ Add
+            </Button>
+          </div>
+          <p className="text-xs text-muted">
+            Line total: <span className="text-text">{formatPaise(previewAmount)}</span> ·
+            Enter to add — keeps typing for the next item.
+          </p>
+        </form>
 
         {items.length === 0 ? (
-          <p className="text-sm text-muted">No line items yet.</p>
+          <p className="border-t border-border pt-3 text-sm text-muted">
+            No line items yet.
+          </p>
         ) : (
-          <div className="divide-y divide-border">
-            {items.map((it) => (
+          <div className="max-h-[46vh] divide-y divide-border overflow-y-auto border-t border-border">
+            {items.map((it, idx) => (
               <div key={it.id} className="flex items-center gap-2 py-2">
+                <span className="w-6 shrink-0 text-right text-xs tabular-nums text-muted">
+                  {idx + 1}
+                </span>
                 <button
                   className="min-w-0 flex-1 text-left"
                   onClick={() =>
-                    setForm({
+                    setEdit({
                       id: it.id,
                       description: it.description,
                       qty: String(it.qty),
@@ -155,46 +215,6 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
           <span>{formatPaise(total)}</span>
         </div>
 
-        <form onSubmit={submit} className="space-y-2 border-t border-border pt-3">
-          <Input
-            placeholder="Description"
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-          />
-          <div className="grid grid-cols-3 gap-2">
-            <Input
-              placeholder="Qty"
-              inputMode="decimal"
-              value={form.qty}
-              onChange={(e) => setForm({ ...form, qty: e.target.value })}
-            />
-            <Input
-              placeholder="Rate ₹"
-              inputMode="decimal"
-              value={form.rate}
-              onChange={(e) => setForm({ ...form, rate: e.target.value })}
-            />
-            <div className="flex items-center justify-end pr-1 text-sm text-muted">
-              {formatPaise(previewAmount)}
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button type="submit" size="sm" disabled={saveItem.isPending}>
-              {form.id ? "Update item" : "＋ Add item"}
-            </Button>
-            {form.id && (
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => setForm({ description: "", qty: "1", rate: "" })}
-              >
-                Cancel
-              </Button>
-            )}
-          </div>
-        </form>
-
         <div className="flex flex-wrap gap-2 border-t border-border pt-3">
           <Button size="sm" variant="soft" disabled={items.length === 0} onClick={sharePdf}>
             📄 Share {heading} PDF
@@ -215,6 +235,68 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
           )}
         </div>
       </Card>
+
+      <Modal open={edit !== null} onClose={() => setEdit(null)} title={`Edit ${heading.toLowerCase()} item`}>
+        {edit && (
+          <form onSubmit={submitEdit} className="space-y-2">
+            <Input
+              placeholder="Description"
+              value={edit.description}
+              onChange={(e) => setEdit({ ...edit, description: e.target.value })}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-xs text-muted">
+                Qty
+                <Input
+                  className="mt-1"
+                  inputMode="decimal"
+                  value={edit.qty}
+                  onChange={(e) => setEdit({ ...edit, qty: e.target.value })}
+                />
+              </label>
+              <label className="text-xs text-muted">
+                Rate ₹
+                <Input
+                  className="mt-1"
+                  inputMode="decimal"
+                  value={edit.rate}
+                  onChange={(e) => setEdit({ ...edit, rate: e.target.value })}
+                />
+              </label>
+            </div>
+            <p className="text-sm text-muted">
+              Line total:{" "}
+              <span className="font-semibold text-text">
+                {formatPaise(
+                  lineAmountPaise(Number(edit.qty) || 0, toPaise(edit.rate)),
+                )}
+              </span>
+            </p>
+            <div className="flex gap-2 pt-1">
+              <Button type="submit" size="sm" disabled={saveItem.isPending}>
+                ✓ Save changes
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => setEdit(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="danger"
+                className="ml-auto"
+                onClick={() => removeItem.mutate(edit.id)}
+              >
+                Delete
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
     </>
   );
 }
