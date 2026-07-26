@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { employeeRepo } from "@/repo/repos";
 import { sync } from "@/repo/SupabaseSync";
@@ -7,14 +7,29 @@ import type { EmployeeRole, EmployeeRow } from "@/lib/db";
 import { empBalancePaise } from "@/domain/settlement";
 import { formatPaise, toPaise } from "@/lib/money";
 import { matchesQuery } from "@/lib/search";
+import { useEntryMode } from "@/store/settings";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { SearchInput } from "@/components/SearchInput";
+import { CrudGrid } from "@/components/grid/CrudGrid";
+import type { GridColumn } from "@/components/grid/SheetGrid";
 import { cn } from "@/lib/utils";
 
 const ROLES: EmployeeRole[] = ["Electrician", "Plumber", "Helper"];
+
+const WORKER_COLUMNS: GridColumn[] = [
+  { key: "name", label: "Name", type: "text" },
+  { key: "phone", label: "Phone", type: "text", width: "120px" },
+  {
+    key: "role",
+    label: "Role",
+    type: "select",
+    options: ROLES.map((r) => ({ value: r, label: r })),
+  },
+  { key: "wage", label: "Wage ₹/hr", type: "rupee", align: "right" },
+];
 
 type WorkerSort = "recent" | "name" | "balance" | "wage";
 const SORT_LABELS: Record<WorkerSort, string> = {
@@ -37,9 +52,10 @@ const empty: FormState = { name: "", phone: "", role: "Electrician", wage: "" };
 export function Workers() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const excel = useEntryMode() === "excel";
   const [form, setForm] = useState<FormState | null>(null);
 
-  const { data: workers = [] } = useQuery({
+  const { data: workers = [], isSuccess: workersLoaded } = useQuery({
     queryKey: ["employees"],
     queryFn: () => employeeRepo.getAll(),
   });
@@ -131,12 +147,92 @@ export function Workers() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold">Workers</h2>
-        <Button size="sm" onClick={() => setForm({ ...empty })}>
-          ＋ Add worker
-        </Button>
+        {!excel && (
+          <Button size="sm" onClick={() => setForm({ ...empty })}>
+            ＋ Add worker
+          </Button>
+        )}
       </div>
 
-      {form && (
+      {excel && (
+        <Card className="space-y-3">
+          <div className="text-sm text-muted">
+            Edit any cell to update a worker · type in the ＋ row to add · balances
+            recompute automatically. Tap ↗ to open a worker's attendance & settlement.
+          </div>
+          <CrudGrid
+            columns={WORKER_COLUMNS}
+            ready={workersLoaded}
+            seed={workers.map((w) => ({
+              _id: w.id,
+              name: w.name,
+              phone: w.phone ?? "",
+              role: w.role,
+              wage: String(w.hourly_wage_paise / 100),
+            }))}
+            blankRow={{ name: "", phone: "", role: ROLES[0], wage: "" }}
+            isRowBlank={(r) => (r.name ?? "").trim() === ""}
+            snapshotKeys={["name", "phone", "role", "wage"]}
+            computed={[
+              {
+                label: "Balance",
+                width: "130px",
+                render: (r) => {
+                  const bal = balances[r._id] ?? 0;
+                  return (
+                    <span
+                      className={cn(
+                        bal > 0 ? "text-amber" : bal < 0 ? "text-green" : "text-muted",
+                      )}
+                    >
+                      {formatPaise(Math.abs(bal))}
+                      {bal > 0 ? " due" : bal < 0 ? " adv" : ""}
+                    </span>
+                  );
+                },
+              },
+              {
+                label: "",
+                width: "38px",
+                render: (r) => (
+                  <Link
+                    to={`/workers/${r._id}`}
+                    className="text-primary"
+                    aria-label="Open worker"
+                  >
+                    ↗
+                  </Link>
+                ),
+              },
+            ]}
+            persistRow={async (r) => {
+              await employeeRepo.put({
+                id: r._id,
+                name: r.name.trim(),
+                phone: r.phone.trim() || null,
+                role: (r.role || ROLES[0]) as EmployeeRole,
+                hourly_wage_paise: toPaise(r.wage),
+              });
+              sync.sync().catch(() => {});
+            }}
+            deleteRow={async (id) => {
+              const w = workers.find((x) => x.id === id);
+              const bal = balances[id] ?? 0;
+              const warning =
+                bal !== 0
+                  ? `${w?.name ?? "This worker"} has a balance of ${formatPaise(bal)}. History is kept, but the worker disappears from lists. Delete anyway?`
+                  : `Delete "${w?.name ?? "this worker"}"?`;
+              if (!confirm(warning)) return false;
+              await employeeRepo.softDelete(id);
+              sync.sync().catch(() => {});
+              return true;
+            }}
+            onChanged={refresh}
+          />
+        </Card>
+      )}
+
+      {!excel && form && (
         <Card>
           <form onSubmit={submit} className="space-y-3">
             <div className="font-semibold">{form.id ? "Edit worker" : "New worker"}</div>
@@ -190,7 +286,7 @@ export function Workers() {
         </Card>
       )}
 
-      {workers.length === 0 && !form ? (
+      {excel ? null : workers.length === 0 && !form ? (
         <Card className="flex flex-col items-center gap-2 py-10 text-center text-muted">
           <span className="text-4xl">👷</span>
           <p>No workers yet. Tap ＋ to add your first worker.</p>

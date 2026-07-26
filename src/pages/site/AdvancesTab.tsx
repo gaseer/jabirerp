@@ -9,14 +9,25 @@ import { shareAdvanceStatementPdf } from "@/lib/statementPdf";
 import { shareAdvanceStatementXlsx } from "@/lib/xlsx";
 import { formatPaise, toPaise } from "@/lib/money";
 import { formatDate, todayIso, type DateRange } from "@/lib/dates";
+import { useEntryMode } from "@/store/settings";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ModeTag } from "@/components/ModeTag";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { ModeToggle } from "@/components/ModeToggle";
+import { EntryGrid } from "@/components/grid/EntryGrid";
+import { MODE_OPTIONS, sumRupeeColumn } from "@/components/grid/gridHelpers";
+import type { GridColumn } from "@/components/grid/SheetGrid";
 
 const pushSoon = () => sync.sync().catch(() => {});
+
+const ADVANCE_COLUMNS: GridColumn[] = [
+  { key: "amount", label: "Amount ₹", type: "rupee", align: "right" },
+  { key: "date", label: "Date", type: "date" },
+  { key: "mode", label: "Mode", type: "select", width: "96px", options: MODE_OPTIONS },
+  { key: "note", label: "Note", type: "text" },
+];
 
 /**
  * Customer advances for a site. Money rows are append-only: no edit —
@@ -24,6 +35,7 @@ const pushSoon = () => sync.sync().catch(() => {});
  */
 export function AdvancesTab({ site }: { site: SiteRow }) {
   const qc = useQueryClient();
+  const excel = useEntryMode() === "excel";
   const [range, setRange] = useState<DateRange>({});
   const [form, setForm] = useState({ amount: "", mode: "cash" as TxnMode, date: todayIso(), note: "" });
   const [err, setErr] = useState<string | null>(null);
@@ -90,33 +102,58 @@ export function AdvancesTab({ site }: { site: SiteRow }) {
   return (
     <div className="space-y-3">
       <Card className="space-y-3">
-        <div className="font-semibold">Record advance received</div>
-        <form onSubmit={submit} className="space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <Input
-              placeholder="Amount ₹ *"
-              inputMode="decimal"
-              value={form.amount}
-              onChange={(e) => setForm({ ...form, amount: e.target.value })}
-              required
-            />
-            <Input
-              type="date"
-              value={form.date}
-              onChange={(e) => setForm({ ...form, date: e.target.value })}
-            />
-          </div>
-          <ModeToggle mode={form.mode} onChange={(mode) => setForm({ ...form, mode })} />
-          <Input
-            placeholder="Note (optional)"
-            value={form.note}
-            onChange={(e) => setForm({ ...form, note: e.target.value })}
+        <div className="font-semibold">Record advance{excel ? "s" : ""} received</div>
+        {excel ? (
+          <EntryGrid
+            columns={ADVANCE_COLUMNS}
+            blankRow={{ amount: "", date: todayIso(), mode: "cash", note: "" }}
+            isRowBlank={(r) => (r.amount ?? "").trim() === ""}
+            footer={(rows) => <>Total: {sumRupeeColumn(rows, "amount")}</>}
+            saveLabel="Save advances"
+            commit={async (rows) => {
+              // Validate up-front so a zero/blank amount can't half-save the batch.
+              if (rows.some((r) => toPaise(r.amount) <= 0))
+                throw new Error("Every row needs an amount greater than ₹0");
+              for (const r of rows) {
+                await addCustomerAdvance(site.id, {
+                  amountPaise: toPaise(r.amount),
+                  mode: (r.mode || "cash") as TxnMode,
+                  txnDate: r.date || todayIso(),
+                  note: r.note,
+                });
+              }
+              pushSoon();
+            }}
+            onCommitted={refresh}
           />
-          {err && <p className="text-sm text-red">{err}</p>}
-          <Button type="submit" size="sm" disabled={add.isPending}>
-            ＋ Add advance
-          </Button>
-        </form>
+        ) : (
+          <form onSubmit={submit} className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                placeholder="Amount ₹ *"
+                inputMode="decimal"
+                value={form.amount}
+                onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                required
+              />
+              <Input
+                type="date"
+                value={form.date}
+                onChange={(e) => setForm({ ...form, date: e.target.value })}
+              />
+            </div>
+            <ModeToggle mode={form.mode} onChange={(mode) => setForm({ ...form, mode })} />
+            <Input
+              placeholder="Note (optional)"
+              value={form.note}
+              onChange={(e) => setForm({ ...form, note: e.target.value })}
+            />
+            {err && <p className="text-sm text-red">{err}</p>}
+            <Button type="submit" size="sm" disabled={add.isPending}>
+              ＋ Add advance
+            </Button>
+          </form>
+        )}
       </Card>
 
       <Card className="space-y-3">

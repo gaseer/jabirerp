@@ -1,7 +1,7 @@
 # Power Plus — MVP Verification Checklist
 
 Slices 3–11 built in one batch. Everything below needs a human pass before
-calling MVP done. Automated: `npm test` (78 tests) and `npm run build` both green.
+calling MVP done. Automated: `npm test` (92 tests) and `npm run build` both green.
 
 ## 0. One-time setup
 
@@ -100,7 +100,7 @@ For each of: **Quotation/Bill** (site → Quotation/Bill tab), **Advance stateme
 - [ ] **Ledger**: IN/OUT badges, Cash/Bank tags, party names (site · category for expenses), filters + Clear-all.
 - [ ] **Shops**: total-holding stat, per-shop Received/Paid/Holding, Pending/Cleared pill, "Pay shop" prefills the pending amount, site link navigates.
 - [ ] **Reports**: overall income-vs-cost bars, margin %, per-site cards, "Shop money excluded" subtitle. Income counts ONLY converted bills (site with unconverted quotation contributes 0).
-- [ ] **Nav**: 6 items incl. P&L 📊, mobile bottom bar not cramped (grid-cols-6).
+- [ ] **Nav**: 6 items incl. P&L 📊, mobile bottom bar not cramped (grid-cols-6). Settings reachable from the **desktop sidebar** (⚙️ Settings, below P&L) and the **mobile header** (⚙️ gear, left of the sync pill).
 
 ## 7. Timezone
 
@@ -109,3 +109,41 @@ For each of: **Quotation/Bill** (site → Quotation/Bill tab), **Advance stateme
 ## 8. Dexie migration safety
 
 - [ ] Open the app with pre-existing local data from slices 0–2 (Dexie v3) → upgrades to v7 silently, sites/documents intact, no console errors.
+
+## 9. Excel / table entry mode (added 2026-07-26)
+
+Preference lives in `localStorage` (`powerplus-settings`), **defaults to Excel**, and flips every entry screen instantly. It is a UI preference only — the stored data, money math, and sync are byte-for-byte identical to form mode.
+
+- [ ] **Settings page** (⚙️): "Data entry style" shows two cards — **Excel / table (default)** and **Simple form**. Fresh install / cleared storage starts on **Excel**. Selecting one marks it ✓ and takes effect with no reload. Account card shows email, online/offline pill, and Sign out (this is now the mobile sign-out path).
+- [ ] Toggle persists across a full reload and across app restarts.
+
+### 9a. Quotation / Bill grid (live spreadsheet)
+- [ ] Excel mode replaces the add-bar + list with a grid: `# | Description | Qty | Rate ₹ | Amount | ✕`. The last row is a blank `＋` row; typing in it spawns a new blank below.
+- [ ] **Enter** jumps to the Description of the next row; **Tab** moves across cells; **↓/↑** move within a column. Amount recomputes live per row and the **Total** updates as you type — 50+ items go in without touching the mouse.
+- [ ] Edits **write straight through** to Dexie (debounced ~0.5s, and immediately on leaving a cell). Reload → every row is still there with the same values/positions. ✕ soft-deletes that row (history preserved). Share PDF/Excel and Convert-to-bill use the saved rows.
+- [ ] Convert a quotation → the grid reseeds from the copied **bill** items and stays editable; no rows lost or duplicated.
+- [ ] Switch to **Simple form** mid-document → the original add-bar + edit-modal UI returns, showing the same items; switch back → grid shows them again.
+
+### 9b. Batch grids (append-only / entry screens)
+Fill several rows → running **Total** footer → **✓ Save (N)** commits all as new rows → grid clears → history/period totals update. Amount ≤ ₹0 (or, for attendance, a bad time / missing pick) blocks the **whole** save with an error and writes **nothing** (no partial batch, outbox unchanged).
+- [ ] **Site → Advances** (Amount/Date/Mode/Note) and **Site → Expenses** (Category/Amount/Date/Mode/Note).
+- [ ] **Site → Workers tab** attendance (Worker/Date/From/To + live Wage column). Overlap guard still fires per row. Editing an existing shift still uses the ✏️ modal in both modes.
+- [ ] **Site → Tasks (Pending works)**: single-column grid adds many pending works at once; the checklist below (tick / ✕) still toggles + deletes in place.
+- [ ] **Worker detail → Payments** (Amount/Date/Mode/Note) — append-only, history + period total below.
+- [ ] **Worker detail → Attendance** (Site/Date/From/To + Wage) — marks several shifts for that worker; ✏️ edit-modal + 🗑 delete on history unchanged.
+- [ ] **Shops** page: "＋ Add shops" opens a batch grid card (Name/Phone/Linked site; Close dismisses). Save creates all shops; per-shop txns still via the shop card's Received / Pay-shop buttons.
+
+### 9c. Workers page — full CRUD grid (Excel mode)
+- [ ] Excel mode replaces the worker card list with an **editable spreadsheet**: Name / Phone / Role / Wage ₹/hr, plus read-only **Balance** (amber "due" / green "adv" / settled) and an **↗ open** column to that worker's detail. The header "＋ Add worker" button is hidden (the ＋ row is the add path).
+- [ ] Edit any cell → **auto-saves** (blur + ~0.5s debounce); reload shows the change. Wage edit still only affects FUTURE attendance (past snapshots unchanged) — confirm an old shift's wage is untouched.
+- [ ] Type in the ＋ row → new worker created (gets an id immediately, saved on blur); Balance/↗ populate after save.
+- [ ] ✕ delete → confirm dialog; a worker with balance ≠ 0 gets the "has a balance…" warning first. Cancelling keeps the row. Confirming soft-deletes (history preserved, gone from lists).
+- [ ] Switch to **Simple form** → the card list + search/sort/filter + edit-card return, same workers. Switch back → grid again.
+
+### 9d. Quotation/Bill & Workers use LIVE grids (write-through)
+- [ ] These two edit saved records in place (vs. the batch "Save (N)" grids). No Save button — changes persist as you go. Covered in 9a (line items) and 9c (workers).
+
+### 9e. Mobile / responsive
+- [ ] On a phone, each grid scrolls **horizontally inside its own box** — the page body never scrolls sideways. Cells stay tap-sized; focusing a text/number cell does **not** trigger iOS zoom (inputs keep 16px).
+- [ ] Grid header row stays visible above the scrolling body; the ＋ blank row and Save button stay reachable.
+- [ ] Every Sites tab (Quotation/Bill, Advances, Expenses, Workers, Tasks — Overview is read-only) and every Worker-detail tab (Attendance, Payments — Settlement is read-only) honours the Excel/Form toggle.

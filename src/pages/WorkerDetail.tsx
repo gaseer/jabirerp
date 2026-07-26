@@ -18,6 +18,7 @@ import { shareSettlementPdf } from "@/lib/statementPdf";
 import { shareSettlementXlsx } from "@/lib/xlsx";
 import { formatPaise, toPaise } from "@/lib/money";
 import { formatDate, todayIso, type DateRange } from "@/lib/dates";
+import { useEntryMode } from "@/store/settings";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,9 @@ import { Modal } from "@/components/ui/modal";
 import { ModeTag } from "@/components/ModeTag";
 import { ModeToggle } from "@/components/ModeToggle";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
+import { EntryGrid } from "@/components/grid/EntryGrid";
+import { MODE_OPTIONS, sumRupeeColumn } from "@/components/grid/gridHelpers";
+import type { GridColumn, GridRow } from "@/components/grid/SheetGrid";
 import { cn } from "@/lib/utils";
 
 const pushSoon = () => sync.sync().catch(() => {});
@@ -98,6 +102,7 @@ const BLANK_SHIFT = { siteId: "", date: todayIso(), start: "09:00", end: "17:00"
 
 function AttendanceTab({ worker }: { worker: EmployeeRow }) {
   const qc = useQueryClient();
+  const excel = useEntryMode() === "excel";
   const [range, setRange] = useState<DateRange>({});
   const [form, setForm] = useState(BLANK_SHIFT);
   // Non-null = the form is editing that existing entry instead of adding one.
@@ -263,6 +268,70 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
     </form>
   );
 
+  // Excel mode: mark several shifts at once (site fixed per row, worker fixed).
+  const rowWagePaise = (r: GridRow) => {
+    if (!isValidTime(r.start) || !isValidTime(r.end)) return 0;
+    const h = hoursBetween(r.start, r.end);
+    return h > 0 ? attendanceWagePaise(worker.hourly_wage_paise, h) : 0;
+  };
+  const attendanceColumns: GridColumn[] = [
+    {
+      key: "site",
+      label: "Site",
+      type: "select",
+      placeholder: "Site…",
+      options: sites.map((s) => ({ value: s.id, label: s.name })),
+    },
+    { key: "date", label: "Date", type: "date" },
+    { key: "start", label: "From", type: "time" },
+    { key: "end", label: "To", type: "time" },
+  ];
+  const attendanceGrid = (
+    <EntryGrid
+      columns={attendanceColumns}
+      blankRow={{ site: "", date: todayIso(), start: "09:00", end: "17:00" }}
+      isRowBlank={(r) => !r.site}
+      computed={{
+        label: "Wage",
+        render: (r) => {
+          const p = rowWagePaise(r);
+          return p ? formatPaise(p) : "—";
+        },
+      }}
+      footer={(rows) => (
+        <>Total wages: {formatPaise(rows.reduce((s, r) => s + rowWagePaise(r), 0))}</>
+      )}
+      saveLabel="Save attendance"
+      commit={async (rows) => {
+        for (const r of rows) {
+          if (!r.site) throw new Error("Pick a site in every row");
+          if (
+            !isValidTime(r.start) ||
+            !isValidTime(r.end) ||
+            hoursBetween(r.start, r.end) <= 0
+          )
+            throw new Error("Every row needs From/To times with end after start");
+        }
+        for (const r of rows) {
+          await markAttendance({
+            employeeId: worker.id,
+            siteId: r.site,
+            workDate: r.date || todayIso(),
+            startTime: r.start,
+            endTime: r.end,
+          });
+        }
+        pushSoon();
+      }}
+      onCommitted={() => {
+        refresh();
+        qc.invalidateQueries({ queryKey: ["site-attendance"] });
+        qc.invalidateQueries({ queryKey: ["site-pnl"] });
+        qc.invalidateQueries({ queryKey: ["worker-day"] });
+      }}
+    />
+  );
+
   return (
     <div className="space-y-3">
       {/* Add form inline; editing an existing row opens it in a modal over the
@@ -270,7 +339,7 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
       {!editingId && (
         <Card className="space-y-3">
           <div className="font-semibold">Mark attendance</div>
-          {shiftForm}
+          {excel ? attendanceGrid : shiftForm}
         </Card>
       )}
       <Modal open={editingId !== null} onClose={cancelEdit} title="Edit attendance">
@@ -331,8 +400,16 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
   );
 }
 
+const PAYMENT_COLUMNS: GridColumn[] = [
+  { key: "amount", label: "Amount ₹", type: "rupee", align: "right" },
+  { key: "date", label: "Date", type: "date" },
+  { key: "mode", label: "Mode", type: "select", width: "96px", options: MODE_OPTIONS },
+  { key: "note", label: "Note", type: "text" },
+];
+
 function PaymentsTab({ worker }: { worker: EmployeeRow }) {
   const qc = useQueryClient();
+  const excel = useEntryMode() === "excel";
   const [range, setRange] = useState<DateRange>({});
   const [form, setForm] = useState({ amount: "", mode: "cash" as TxnMode, date: todayIso(), note: "" });
   const [err, setErr] = useState<string | null>(null);
@@ -381,37 +458,61 @@ function PaymentsTab({ worker }: { worker: EmployeeRow }) {
   return (
     <div className="space-y-3">
       <Card className="space-y-3">
-        <div className="font-semibold">Record payment</div>
+        <div className="font-semibold">Record payment{excel ? "s" : ""}</div>
         <p className="text-xs text-muted">
           Advance or settlement — both are the same payment; the balance works
           itself out.
         </p>
-        <form onSubmit={submit} className="space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <Input
-              placeholder="Amount ₹ *"
-              inputMode="decimal"
-              value={form.amount}
-              onChange={(e) => setForm({ ...form, amount: e.target.value })}
-              required
-            />
-            <Input
-              type="date"
-              value={form.date}
-              onChange={(e) => setForm({ ...form, date: e.target.value })}
-            />
-          </div>
-          <ModeToggle mode={form.mode} onChange={(mode) => setForm({ ...form, mode })} />
-          <Input
-            placeholder="Note (optional)"
-            value={form.note}
-            onChange={(e) => setForm({ ...form, note: e.target.value })}
+        {excel ? (
+          <EntryGrid
+            columns={PAYMENT_COLUMNS}
+            blankRow={{ amount: "", date: todayIso(), mode: "cash", note: "" }}
+            isRowBlank={(r) => (r.amount ?? "").trim() === ""}
+            footer={(rows) => <>Total: {sumRupeeColumn(rows, "amount")}</>}
+            saveLabel="Save payments"
+            commit={async (rows) => {
+              if (rows.some((r) => toPaise(r.amount) <= 0))
+                throw new Error("Every row needs an amount greater than ₹0");
+              for (const r of rows) {
+                await addWorkerPayment(worker.id, {
+                  amountPaise: toPaise(r.amount),
+                  mode: (r.mode || "cash") as TxnMode,
+                  txnDate: r.date || todayIso(),
+                  note: r.note,
+                });
+              }
+              pushSoon();
+            }}
+            onCommitted={refresh}
           />
-          {err && <p className="text-sm text-red">{err}</p>}
-          <Button type="submit" size="sm" disabled={add.isPending}>
-            ＋ Add payment
-          </Button>
-        </form>
+        ) : (
+          <form onSubmit={submit} className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                placeholder="Amount ₹ *"
+                inputMode="decimal"
+                value={form.amount}
+                onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                required
+              />
+              <Input
+                type="date"
+                value={form.date}
+                onChange={(e) => setForm({ ...form, date: e.target.value })}
+              />
+            </div>
+            <ModeToggle mode={form.mode} onChange={(mode) => setForm({ ...form, mode })} />
+            <Input
+              placeholder="Note (optional)"
+              value={form.note}
+              onChange={(e) => setForm({ ...form, note: e.target.value })}
+            />
+            {err && <p className="text-sm text-red">{err}</p>}
+            <Button type="submit" size="sm" disabled={add.isPending}>
+              ＋ Add payment
+            </Button>
+          </form>
+        )}
       </Card>
 
       <Card className="space-y-3">

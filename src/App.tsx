@@ -12,6 +12,7 @@ import { WorkerDetail } from "@/pages/WorkerDetail";
 import { Ledger } from "@/pages/Ledger";
 import { Shops } from "@/pages/Shops";
 import { Reports } from "@/pages/Reports";
+import { Settings } from "@/pages/Settings";
 
 export default function App() {
   const { user, loading, init } = useAuth();
@@ -56,6 +57,7 @@ export default function App() {
           <Route path="ledger" element={<Ledger />} />
           <Route path="shops" element={<Shops />} />
           <Route path="reports" element={<Reports />} />
+          <Route path="settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

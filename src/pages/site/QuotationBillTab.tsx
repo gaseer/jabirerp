@@ -13,6 +13,8 @@ import { documentTotalPaise, lineAmountPaise } from "@/domain/quotation";
 import { shareDocumentPdf } from "@/lib/pdf";
 import { shareDocumentXlsx } from "@/lib/xlsx";
 import { formatPaise, toPaise } from "@/lib/money";
+import { useEntryMode } from "@/store/settings";
+import { LineItemGrid } from "@/components/grid/LineItemGrid";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +40,7 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
   const siteId = site.id;
   const isBill = kind === "bill";
   const heading = isBill ? "Bill" : "Quotation";
+  const excel = useEntryMode() === "excel";
 
   // Add-bar state (kept separate from the edit modal so an in-progress row
   // isn't clobbered when you tap an existing item to edit it).
@@ -139,81 +142,17 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
           </span>
         </div>
 
-        {/* Add bar pinned above the list so it stays reachable at any length. */}
-        <form onSubmit={submitAdd} className="space-y-2">
-          <Input
-            ref={descRef}
-            placeholder="Description"
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
+        {excel ? (
+          <LineItemGrid
+            siteId={siteId}
+            kind={kind}
+            items={items}
+            ready={bundle !== undefined}
+            onChanged={() => qc.invalidateQueries({ queryKey: bundleKey })}
           />
-          <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
-            <Input
-              placeholder="Qty"
-              inputMode="decimal"
-              value={form.qty}
-              onChange={(e) => setForm({ ...form, qty: e.target.value })}
-            />
-            <Input
-              placeholder="Rate ₹"
-              inputMode="decimal"
-              value={form.rate}
-              onChange={(e) => setForm({ ...form, rate: e.target.value })}
-            />
-            <Button type="submit" size="md" disabled={saveItem.isPending}>
-              ＋ Add
-            </Button>
-          </div>
-          <p className="text-xs text-muted">
-            Line total: <span className="text-text">{formatPaise(previewAmount)}</span> ·
-            Enter to add — keeps typing for the next item.
-          </p>
-        </form>
-
-        {items.length === 0 ? (
-          <p className="border-t border-border pt-3 text-sm text-muted">
-            No line items yet.
-          </p>
         ) : (
-          <div className="max-h-[46vh] divide-y divide-border overflow-y-auto border-t border-border">
-            {items.map((it, idx) => (
-              <div key={it.id} className="flex items-center gap-2 py-2">
-                <span className="w-6 shrink-0 text-right text-xs tabular-nums text-muted">
-                  {idx + 1}
-                </span>
-                <button
-                  className="min-w-0 flex-1 text-left"
-                  onClick={() =>
-                    setEdit({
-                      id: it.id,
-                      description: it.description,
-                      qty: String(it.qty),
-                      rate: String(it.rate_paise / 100),
-                    })
-                  }
-                >
-                  <div className="truncate">{it.description || "(no description)"}</div>
-                  <div className="text-xs text-muted">
-                    {it.qty} × {formatPaise(it.rate_paise)}
-                  </div>
-                </button>
-                <div className="font-medium">{formatPaise(it.amount_paise)}</div>
-                <button
-                  className="text-red"
-                  aria-label="Remove item"
-                  onClick={() => removeItem.mutate(it.id)}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
+          FormBody()
         )}
-
-        <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
-          <span>Total</span>
-          <span>{formatPaise(total)}</span>
-        </div>
 
         <div className="flex flex-wrap gap-2 border-t border-border pt-3">
           <Button size="sm" variant="soft" disabled={items.length === 0} onClick={sharePdf}>
@@ -299,4 +238,87 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
       </Modal>
     </>
   );
+
+  // ── Form mode (original one-row-at-a-time UI) ──────────────────────────────
+  function FormBody() {
+    return (
+      <>
+        {/* Add bar pinned above the list so it stays reachable at any length. */}
+        <form onSubmit={submitAdd} className="space-y-2">
+          <Input
+            ref={descRef}
+            placeholder="Description"
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+          />
+          <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+            <Input
+              placeholder="Qty"
+              inputMode="decimal"
+              value={form.qty}
+              onChange={(e) => setForm({ ...form, qty: e.target.value })}
+            />
+            <Input
+              placeholder="Rate ₹"
+              inputMode="decimal"
+              value={form.rate}
+              onChange={(e) => setForm({ ...form, rate: e.target.value })}
+            />
+            <Button type="submit" size="md" disabled={saveItem.isPending}>
+              ＋ Add
+            </Button>
+          </div>
+          <p className="text-xs text-muted">
+            Line total: <span className="text-text">{formatPaise(previewAmount)}</span> ·
+            Enter to add — keeps typing for the next item.
+          </p>
+        </form>
+
+        {items.length === 0 ? (
+          <p className="border-t border-border pt-3 text-sm text-muted">
+            No line items yet.
+          </p>
+        ) : (
+          <div className="max-h-[46vh] divide-y divide-border overflow-y-auto border-t border-border">
+            {items.map((it, idx) => (
+              <div key={it.id} className="flex items-center gap-2 py-2">
+                <span className="w-6 shrink-0 text-right text-xs tabular-nums text-muted">
+                  {idx + 1}
+                </span>
+                <button
+                  className="min-w-0 flex-1 text-left"
+                  onClick={() =>
+                    setEdit({
+                      id: it.id,
+                      description: it.description,
+                      qty: String(it.qty),
+                      rate: String(it.rate_paise / 100),
+                    })
+                  }
+                >
+                  <div className="truncate">{it.description || "(no description)"}</div>
+                  <div className="text-xs text-muted">
+                    {it.qty} × {formatPaise(it.rate_paise)}
+                  </div>
+                </button>
+                <div className="font-medium">{formatPaise(it.amount_paise)}</div>
+                <button
+                  className="text-red"
+                  aria-label="Remove item"
+                  onClick={() => removeItem.mutate(it.id)}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
+          <span>Total</span>
+          <span>{formatPaise(total)}</span>
+        </div>
+      </>
+    );
+  }
 }

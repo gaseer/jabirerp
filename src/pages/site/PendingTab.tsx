@@ -4,16 +4,24 @@ import type { SiteRow } from "@/lib/db";
 import { db } from "@/lib/db";
 import { siteTaskRepo } from "@/repo/repos";
 import { sync } from "@/repo/SupabaseSync";
+import { useEntryMode } from "@/store/settings";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { EntryGrid } from "@/components/grid/EntryGrid";
+import type { GridColumn } from "@/components/grid/SheetGrid";
 import { cn } from "@/lib/utils";
 
 const pushSoon = () => sync.sync().catch(() => {});
 
+const TASK_COLUMNS: GridColumn[] = [
+  { key: "text", label: "Pending work", type: "text" },
+];
+
 /** Pending-works checklist. Non-financial, so toggle edits in place (LWW). */
 export function PendingTab({ site }: { site: SiteRow }) {
   const qc = useQueryClient();
+  const excel = useEntryMode() === "excel";
   const [text, setText] = useState("");
 
   const key = ["site-tasks", site.id];
@@ -68,16 +76,32 @@ export function PendingTab({ site }: { site: SiteRow }) {
     <Card className="space-y-3">
       <div className="font-semibold">Pending works</div>
 
-      <form onSubmit={submit} className="flex gap-2">
-        <Input
-          placeholder="Add a pending work…"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
+      {excel ? (
+        <EntryGrid
+          columns={TASK_COLUMNS}
+          blankRow={{ text: "" }}
+          isRowBlank={(r) => (r.text ?? "").trim() === ""}
+          saveLabel="Add works"
+          commit={async (rows) => {
+            for (const r of rows) {
+              await siteTaskRepo.put({ site_id: site.id, text: r.text.trim(), done: false });
+            }
+            pushSoon();
+          }}
+          onCommitted={refresh}
         />
-        <Button type="submit" size="sm" className="h-11 shrink-0" disabled={add.isPending}>
-          ＋ Add
-        </Button>
-      </form>
+      ) : (
+        <form onSubmit={submit} className="flex gap-2">
+          <Input
+            placeholder="Add a pending work…"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+          <Button type="submit" size="sm" className="h-11 shrink-0" disabled={add.isPending}>
+            ＋ Add
+          </Button>
+        </form>
+      )}
 
       {tasks.length === 0 ? (
         <p className="py-4 text-center text-sm text-muted">No pending works 🎉</p>

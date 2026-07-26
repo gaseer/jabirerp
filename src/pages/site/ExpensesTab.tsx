@@ -11,6 +11,7 @@ import {
 } from "@/domain/transactions";
 import { formatPaise, toPaise } from "@/lib/money";
 import { formatDate, todayIso, type DateRange } from "@/lib/dates";
+import { useEntryMode } from "@/store/settings";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,12 +19,29 @@ import { Select } from "@/components/ui/select";
 import { ModeTag } from "@/components/ModeTag";
 import { ModeToggle } from "@/components/ModeToggle";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
+import { EntryGrid } from "@/components/grid/EntryGrid";
+import { MODE_OPTIONS, sumRupeeColumn } from "@/components/grid/gridHelpers";
+import type { GridColumn } from "@/components/grid/SheetGrid";
 
 const pushSoon = () => sync.sync().catch(() => {});
+
+const EXPENSE_COLUMNS: GridColumn[] = [
+  {
+    key: "category",
+    label: "Category",
+    type: "select",
+    options: EXPENSE_CATEGORIES.map((c) => ({ value: c, label: c })),
+  },
+  { key: "amount", label: "Amount ₹", type: "rupee", align: "right" },
+  { key: "date", label: "Date", type: "date" },
+  { key: "mode", label: "Mode", type: "select", width: "96px", options: MODE_OPTIONS },
+  { key: "note", label: "Note", type: "text" },
+];
 
 /** Site expenses (materials, travel…). Append-only: soft-delete + re-add to fix. */
 export function ExpensesTab({ site }: { site: SiteRow }) {
   const qc = useQueryClient();
+  const excel = useEntryMode() === "excel";
   const [range, setRange] = useState<DateRange>({});
   const [catFilter, setCatFilter] = useState("");
   const [form, setForm] = useState({
@@ -82,45 +100,39 @@ export function ExpensesTab({ site }: { site: SiteRow }) {
   return (
     <div className="space-y-3">
       <Card className="space-y-3">
-        <div className="font-semibold">Record expense</div>
-        <form onSubmit={submit} className="space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <Select
-              value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
-            >
-              {EXPENSE_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </Select>
-            <Input
-              placeholder="Amount ₹ *"
-              inputMode="decimal"
-              value={form.amount}
-              onChange={(e) => setForm({ ...form, amount: e.target.value })}
-              required
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <Input
-              type="date"
-              value={form.date}
-              onChange={(e) => setForm({ ...form, date: e.target.value })}
-            />
-            <Input
-              placeholder="Note (optional)"
-              value={form.note}
-              onChange={(e) => setForm({ ...form, note: e.target.value })}
-            />
-          </div>
-          <ModeToggle mode={form.mode} onChange={(mode) => setForm({ ...form, mode })} />
-          {err && <p className="text-sm text-red">{err}</p>}
-          <Button type="submit" size="sm" disabled={add.isPending}>
-            ＋ Add expense
-          </Button>
-        </form>
+        <div className="font-semibold">Record expense{excel ? "s" : ""}</div>
+        {excel ? (
+          <EntryGrid
+            columns={EXPENSE_COLUMNS}
+            blankRow={{
+              category: EXPENSE_CATEGORIES[0],
+              amount: "",
+              date: todayIso(),
+              mode: "cash",
+              note: "",
+            }}
+            isRowBlank={(r) => (r.amount ?? "").trim() === ""}
+            footer={(rows) => <>Total: {sumRupeeColumn(rows, "amount")}</>}
+            saveLabel="Save expenses"
+            commit={async (rows) => {
+              // Validate up-front so a zero/blank amount can't half-save the batch.
+              if (rows.some((r) => toPaise(r.amount) <= 0))
+                throw new Error("Every row needs an amount greater than ₹0");
+              for (const r of rows) {
+                await addSiteExpense(site.id, r.category || EXPENSE_CATEGORIES[0], {
+                  amountPaise: toPaise(r.amount),
+                  mode: (r.mode || "cash") as TxnMode,
+                  txnDate: r.date || todayIso(),
+                  note: r.note,
+                });
+              }
+              pushSoon();
+            }}
+            onCommitted={refresh}
+          />
+        ) : (
+          FormBody()
+        )}
       </Card>
 
       <Card className="space-y-3">
@@ -180,4 +192,47 @@ export function ExpensesTab({ site }: { site: SiteRow }) {
       </Card>
     </div>
   );
+
+  function FormBody() {
+    return (
+      <form onSubmit={submit} className="space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <Select
+              value={form.category}
+              onChange={(e) => setForm({ ...form, category: e.target.value })}
+            >
+              {EXPENSE_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </Select>
+            <Input
+              placeholder="Amount ₹ *"
+              inputMode="decimal"
+              value={form.amount}
+              onChange={(e) => setForm({ ...form, amount: e.target.value })}
+              required
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              type="date"
+              value={form.date}
+              onChange={(e) => setForm({ ...form, date: e.target.value })}
+            />
+            <Input
+              placeholder="Note (optional)"
+              value={form.note}
+              onChange={(e) => setForm({ ...form, note: e.target.value })}
+            />
+          </div>
+          <ModeToggle mode={form.mode} onChange={(mode) => setForm({ ...form, mode })} />
+          {err && <p className="text-sm text-red">{err}</p>}
+          <Button type="submit" size="sm" disabled={add.isPending}>
+            ＋ Add expense
+          </Button>
+        </form>
+    );
+  }
 }

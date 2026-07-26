@@ -28,11 +28,11 @@ export function AppShell() {
           <span className="text-lg font-bold">Power Plus</span>
         </div>
         <nav className="flex flex-col gap-1">
-          {NAV.map((n) => (
+          {[...NAV, { to: "/settings", label: "Settings", icon: "⚙️" }].map((n) => (
             <NavLink
               key={n.to}
               to={n.to}
-              end={n.end}
+              end={"end" in n ? n.end : undefined}
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-3 rounded-sm px-3 py-2 font-medium",
@@ -58,16 +58,30 @@ export function AppShell() {
         <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-bg/85 px-4 py-3 backdrop-blur">
           <div className="text-lg font-bold md:hidden">Power Plus</div>
           <div className="hidden md:block" />
-          <button
-            onClick={() => online && syncNow()}
-            disabled={!online || syncing}
-            className={cn(
-              "rounded-full px-2.5 py-1 text-xs font-semibold",
-              online ? "bg-green-soft text-green" : "bg-amber-soft text-amber",
-            )}
-          >
-            {syncing ? "⟳ Syncing…" : online ? "● Online · Sync" : "● Offline"}
-          </button>
+          <div className="flex items-center gap-2">
+            <NavLink
+              to="/settings"
+              aria-label="Settings"
+              className={({ isActive }) =>
+                cn(
+                  "grid h-8 w-8 place-items-center rounded-full text-lg md:hidden",
+                  isActive ? "bg-primary-soft" : "hover:bg-border/50",
+                )
+              }
+            >
+              ⚙️
+            </NavLink>
+            <button
+              onClick={() => online && syncNow()}
+              disabled={!online || syncing}
+              className={cn(
+                "rounded-full px-2.5 py-1 text-xs font-semibold",
+                online ? "bg-green-soft text-green" : "bg-amber-soft text-amber",
+              )}
+            >
+              {syncing ? "⟳ Syncing…" : online ? "● Online · Sync" : "● Offline"}
+            </button>
+          </div>
         </header>
 
         <main className="mx-auto w-full max-w-[920px] flex-1 p-4">

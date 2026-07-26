@@ -15,11 +15,14 @@ import {
 import { formatPaise } from "@/lib/money";
 import { formatDate, todayIso } from "@/lib/dates";
 import { cn } from "@/lib/utils";
+import { useEntryMode } from "@/store/settings";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Modal } from "@/components/ui/modal";
+import { EntryGrid } from "@/components/grid/EntryGrid";
+import type { GridColumn, GridRow } from "@/components/grid/SheetGrid";
 
 const pushSoon = () => sync.sync().catch(() => {});
 
@@ -31,6 +34,7 @@ const BLANK_SHIFT = { employeeId: "", date: todayIso(), start: "09:00", end: "17
 
 export function WorkersTab({ site }: { site: SiteRow }) {
   const qc = useQueryClient();
+  const excel = useEntryMode() === "excel";
   const [form, setForm] = useState(BLANK_SHIFT);
   // Non-null = the form is editing that existing entry instead of adding one.
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -207,6 +211,74 @@ export function WorkersTab({ site }: { site: SiteRow }) {
     </form>
   );
 
+  // Excel mode: mark several shifts at once in a spreadsheet grid.
+  const empWage = new Map(employees.map((e) => [e.id, e.hourly_wage_paise]));
+  const rowWagePaise = (r: GridRow) => {
+    const wage = empWage.get(r.worker);
+    if (!wage || !isValidTime(r.start) || !isValidTime(r.end)) return 0;
+    const h = hoursBetween(r.start, r.end);
+    return h > 0 ? attendanceWagePaise(wage, h) : 0;
+  };
+  const attendanceColumns: GridColumn[] = [
+    {
+      key: "worker",
+      label: "Worker",
+      type: "select",
+      placeholder: "Worker…",
+      options: employees.map((e) => ({ value: e.id, label: e.name })),
+    },
+    { key: "date", label: "Date", type: "date" },
+    { key: "start", label: "From", type: "time" },
+    { key: "end", label: "To", type: "time" },
+  ];
+  const attendanceGrid = (
+    <EntryGrid
+      columns={attendanceColumns}
+      blankRow={{ worker: "", date: todayIso(), start: "09:00", end: "17:00" }}
+      isRowBlank={(r) => !r.worker}
+      computed={{
+        label: "Wage",
+        render: (r) => {
+          const p = rowWagePaise(r);
+          return p ? formatPaise(p) : "—";
+        },
+      }}
+      footer={(rows) => (
+        <>Total wages: {formatPaise(rows.reduce((s, r) => s + rowWagePaise(r), 0))}</>
+      )}
+      saveLabel="Save attendance"
+      commit={async (rows) => {
+        // Validate every row up-front so a bad one doesn't half-save the batch.
+        for (const r of rows) {
+          if (!r.worker) throw new Error("Pick a worker in every row");
+          if (
+            !isValidTime(r.start) ||
+            !isValidTime(r.end) ||
+            hoursBetween(r.start, r.end) <= 0
+          )
+            throw new Error("Every row needs From/To times with end after start");
+        }
+        for (const r of rows) {
+          await markAttendance({
+            employeeId: r.worker,
+            siteId: site.id,
+            workDate: r.date || todayIso(),
+            startTime: r.start,
+            endTime: r.end,
+          });
+        }
+        pushSoon();
+      }}
+      onCommitted={() => {
+        qc.invalidateQueries({ queryKey: ["site-attendance", site.id] });
+        qc.invalidateQueries({ queryKey: ["site-pnl", site.id] });
+        qc.invalidateQueries({ queryKey: ["employee-balances"] });
+        qc.invalidateQueries({ queryKey: ["worker-day"] });
+        qc.invalidateQueries({ queryKey: ["worker-attendance"] });
+      }}
+    />
+  );
+
   return (
     <div className="space-y-3">
       {/* Add form inline; editing a shift opens it in a modal over the tapped
@@ -222,6 +294,8 @@ export function WorkersTab({ site }: { site: SiteRow }) {
               </Link>{" "}
               page first.
             </p>
+          ) : excel ? (
+            attendanceGrid
           ) : (
             shiftForm
           )}

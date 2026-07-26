@@ -9,12 +9,15 @@ import { shopFigures, shopDuesTotalPaise, type ShopFigures } from "@/domain/shop
 import { formatPaise, toPaise } from "@/lib/money";
 import { todayIso } from "@/lib/dates";
 import { matchesQuery } from "@/lib/search";
+import { useEntryMode } from "@/store/settings";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ModeToggle } from "@/components/ModeToggle";
 import { SearchInput } from "@/components/SearchInput";
+import { EntryGrid } from "@/components/grid/EntryGrid";
+import type { GridColumn } from "@/components/grid/SheetGrid";
 import { cn } from "@/lib/utils";
 
 const pushSoon = () => sync.sync().catch(() => {});
@@ -33,7 +36,10 @@ const SORT_LABELS: Record<ShopSort, string> = {
  */
 export function Shops() {
   const qc = useQueryClient();
+  const excel = useEntryMode() === "excel";
   const [newShop, setNewShop] = useState<{ name: string; phone: string; siteId: string } | null>(null);
+  // Excel mode: batch "add shops" grid, toggled by the header button.
+  const [batch, setBatch] = useState(false);
 
   const { data: shops = [] } = useQuery({
     queryKey: ["shops"],
@@ -131,10 +137,59 @@ export function Shops() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold">Shops</h2>
-        <Button size="sm" onClick={() => setNewShop({ name: "", phone: "", siteId: "" })}>
-          ＋ Add shop
+        <Button
+          size="sm"
+          onClick={() =>
+            excel ? setBatch((v) => !v) : setNewShop({ name: "", phone: "", siteId: "" })
+          }
+        >
+          ＋ Add shop{excel ? "s" : ""}
         </Button>
       </div>
+
+      {excel && batch && !newShop && (
+        <Card className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="font-semibold">Add shops</div>
+            <button
+              className="text-sm text-muted hover:text-text"
+              onClick={() => setBatch(false)}
+            >
+              Close
+            </button>
+          </div>
+          <EntryGrid
+            columns={[
+              { key: "name", label: "Shop name", type: "text" },
+              { key: "phone", label: "Phone", type: "text", width: "120px" },
+              {
+                key: "siteId",
+                label: "Linked site",
+                type: "select",
+                placeholder: "No site",
+                options: sites.map((s) => ({ value: s.id, label: s.name })),
+              },
+            ] satisfies GridColumn[]}
+            blankRow={{ name: "", phone: "", siteId: "" }}
+            isRowBlank={(r) => (r.name ?? "").trim() === ""}
+            saveLabel="Save shops"
+            commit={async (rows) => {
+              for (const r of rows) {
+                await shopRepo.put({
+                  name: r.name.trim(),
+                  phone: r.phone.trim() || null,
+                  site_id: r.siteId || null,
+                });
+              }
+              pushSoon();
+            }}
+            onCommitted={() => {
+              setBatch(false);
+              refresh();
+            }}
+          />
+        </Card>
+      )}
 
       <Card>
         <div className="text-sm text-muted">Total shop money you hold</div>
