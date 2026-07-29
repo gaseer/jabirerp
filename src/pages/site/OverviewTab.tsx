@@ -26,7 +26,8 @@ export function OverviewTab({ site }: { site: SiteRow }) {
   if (!pnl) return <Card className="text-muted">Loading…</Card>;
 
   const rows: { k: string; v: number; cls?: string }[] = [
-    { k: "Bill total", v: pnl.billTotalPaise },
+    // Converted bill + every direct invoice on the site (see siteBillTotalPaise).
+    { k: "Billed total", v: pnl.billTotalPaise },
     { k: "Advances received", v: pnl.advancesPaise, cls: "text-green" },
     {
       k: "Balance receivable",
@@ -61,7 +62,7 @@ export function OverviewTab({ site }: { site: SiteRow }) {
         </div>
         {pnl.billTotalPaise === 0 && (
           <p className="pt-1 text-xs text-muted">
-            No converted bill yet — profit counts costs only.
+            No bill or invoice yet — profit counts costs only.
           </p>
         )}
       </Card>

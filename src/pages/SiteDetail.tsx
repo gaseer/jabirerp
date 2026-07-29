@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { OverviewTab } from "./site/OverviewTab";
 import { QuotationBillTab } from "./site/QuotationBillTab";
+import { InvoicesTab } from "./site/InvoicesTab";
 import { AdvancesTab } from "./site/AdvancesTab";
 import { ExpensesTab } from "./site/ExpensesTab";
 import { WorkersTab } from "./site/WorkersTab";
@@ -13,6 +14,7 @@ import { PendingTab } from "./site/PendingTab";
 const TABS = [
   { key: "overview", label: "Overview" },
   { key: "doc", label: "Quotation/Bill" },
+  { key: "invoices", label: "Invoices" },
   { key: "advances", label: "Advances" },
   { key: "expenses", label: "Expenses" },
   { key: "workers", label: "Workers" },
@@ -71,6 +73,7 @@ export function SiteDetail() {
 
           {tab === "overview" && <OverviewTab site={site} />}
           {tab === "doc" && <QuotationBillTab site={site} />}
+          {tab === "invoices" && <InvoicesTab site={site} />}
           {tab === "advances" && <AdvancesTab site={site} />}
           {tab === "expenses" && <ExpensesTab site={site} />}
           {tab === "workers" && <WorkersTab site={site} />}

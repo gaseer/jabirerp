@@ -29,6 +29,8 @@ async function seedQuotation() {
     qty: 1,
     rate_paise: 500000,
     amount_paise: 500000,
+    section: null,
+    unit: null,
     position: 0,
   });
   await lineItemRepo.put({
@@ -37,6 +39,8 @@ async function seedQuotation() {
     qty: 10,
     rate_paise: 25000,
     amount_paise: 250000,
+    section: null,
+    unit: null,
     position: 1,
   });
   return q;

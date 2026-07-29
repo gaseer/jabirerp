@@ -1,7 +1,19 @@
 import type { SiteRow, EmployeeRow, TransactionRow } from "@/lib/db";
 import { formatPaisePdf } from "@/lib/money";
 import { formatDate, rangeLabel, todayIso, type DateRange } from "@/lib/dates";
-import { BRAND, BRAND_PHONE, shareOrDownloadBlob, slugFilename } from "@/lib/pdf";
+import {
+  PAGE_MARGIN,
+  drawLetterhead,
+  drawPartyBlock,
+  ensureSpace,
+  lastTableY,
+  loadPdfLibs,
+  paintFooters,
+  shareOrDownloadBlob,
+  slugFilename,
+  tableTheme,
+} from "@/lib/pdf";
+import { BRAND_COLORS } from "@/lib/brand";
 import type { Settlement } from "@/domain/settlement";
 import { sumPaise } from "@/domain/transactions";
 import { hoursLabel, timeRangeLabel } from "@/domain/wages";
@@ -29,80 +41,58 @@ export interface StatementSpec {
 }
 
 export async function renderStatementPdf(spec: StatementSpec): Promise<void> {
-  const [{ default: jsPDF }, autoTableMod] = await Promise.all([
-    import("jspdf"),
-    import("jspdf-autotable"),
-  ]);
-  const autoTable = autoTableMod.default;
-
+  const { jsPDF, autoTable } = await loadPdfLibs();
   const doc = new jsPDF({ unit: "pt", format: "a4" });
-  const marginX = 40;
-  const pageW = doc.internal.pageSize.getWidth();
 
-  doc.setFontSize(20);
-  doc.setTextColor("#2563eb");
-  doc.text(BRAND, marginX, 50);
-  if (BRAND_PHONE) {
-    doc.setFontSize(9);
-    doc.setTextColor("#7b8494");
-    doc.text(BRAND_PHONE, marginX, 63);
-  }
-  doc.setFontSize(14);
-  doc.setTextColor("#1c2430");
-  doc.text(spec.title, pageW - marginX, 50, { align: "right" });
-  doc.setFontSize(9);
-  doc.setTextColor("#7b8494");
-  doc.text(`Period: ${spec.periodLabel}`, pageW - marginX, 64, { align: "right" });
+  let y = await drawLetterhead(doc, {
+    title: spec.title,
+    meta: [`Period: ${spec.periodLabel}`],
+  });
+  y = drawPartyBlock(doc, y, {
+    label: "Statement for",
+    name: spec.partyName,
+    lines: [spec.partySub],
+  });
 
-  doc.setFontSize(12);
-  doc.setTextColor("#1c2430");
-  doc.text(spec.partyName, marginX, 92);
-  if (spec.partySub) {
-    doc.setFontSize(10);
-    doc.setTextColor("#7b8494");
-    doc.text(spec.partySub, marginX, 107);
-  }
-
-  let y = 126;
   for (const section of spec.sections) {
-    doc.setFontSize(11);
-    doc.setTextColor("#1c2430");
-    doc.text(section.heading, marginX, y);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10.5);
+    doc.setTextColor(BRAND_COLORS.navy);
+    doc.text(section.heading, PAGE_MARGIN, y);
     autoTable(doc, {
+      ...tableTheme(),
       startY: y + 8,
       head: [section.head],
-      body: section.rows.length ? section.rows : [["—", ...section.head.slice(1).map(() => "")]],
+      body: section.rows.length
+        ? section.rows
+        : [["—", ...section.head.slice(1).map(() => "")]],
       foot: section.foot ? [section.foot] : undefined,
-      styles: { fontSize: 10, cellPadding: 6, overflow: "linebreak" },
-      headStyles: { fillColor: [37, 99, 235], textColor: 255 },
-      footStyles: {
-        fillColor: [232, 240, 255],
-        textColor: [28, 36, 48],
-        fontStyle: "bold",
-      },
       columnStyles: {
         [section.head.length - 1]: { halign: "right", cellWidth: 90 },
       },
-      margin: { left: marginX, right: marginX },
     });
-    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 26;
+    y = lastTableY(doc) + 28;
   }
 
+  // Summary block: a plain two-column table so it page-breaks with the rest.
+  y = ensureSpace(doc, y, 40 + spec.summary.length * 22);
   autoTable(doc, {
     startY: y,
     body: spec.summary.map((s) => [s.k, s.v]),
     theme: "plain",
-    styles: { fontSize: 11, cellPadding: 5 },
+    styles: { fontSize: 10.5, cellPadding: 5, textColor: BRAND_COLORS.ink },
     columnStyles: { 0: { fontStyle: "normal" }, 1: { halign: "right", fontStyle: "bold" } },
     didParseCell: (data) => {
       if (spec.summary[data.row.index]?.emphasis) {
         data.cell.styles.fontStyle = "bold";
         data.cell.styles.fontSize = 13;
+        data.cell.styles.textColor = BRAND_COLORS.navy;
       }
     },
-    margin: { left: marginX, right: marginX },
+    margin: { left: PAGE_MARGIN, right: PAGE_MARGIN, top: 54, bottom: 62 },
   });
 
+  paintFooters(doc);
   await shareOrDownloadBlob(doc.output("blob"), spec.filename);
 }
 

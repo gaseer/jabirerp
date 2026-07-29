@@ -7,6 +7,7 @@ import { Login } from "@/pages/Login";
 import { Dashboard } from "@/pages/Dashboard";
 import { Sites } from "@/pages/Sites";
 import { SiteDetail } from "@/pages/SiteDetail";
+import { InvoiceEditor } from "@/pages/InvoiceEditor";
 import { Workers } from "@/pages/Workers";
 import { WorkerDetail } from "@/pages/WorkerDetail";
 import { Ledger } from "@/pages/Ledger";
@@ -52,6 +53,8 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="sites" element={<Sites />} />
           <Route path="sites/:id" element={<SiteDetail />} />
+          {/* Own route, not a tab: the invoice sheet wants the full width. */}
+          <Route path="invoices/:id" element={<InvoiceEditor />} />
           <Route path="workers" element={<Workers />} />
           <Route path="workers/:id" element={<WorkerDetail />} />
           <Route path="ledger" element={<Ledger />} />

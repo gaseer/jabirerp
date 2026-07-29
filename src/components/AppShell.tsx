@@ -2,6 +2,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useOnline } from "@/hooks/useOnline";
 import { useSyncEngine } from "@/hooks/useSyncEngine";
 import { useAuth } from "@/store/auth";
+import { BrandMark } from "@/components/BrandMark";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -23,10 +24,7 @@ export function AppShell() {
     <div className="flex min-h-full">
       {/* Sidebar (desktop) */}
       <aside className="hidden w-[220px] shrink-0 flex-col border-r border-border bg-surface p-4 md:flex">
-        <div className="mb-6 flex items-center gap-2 px-1">
-          <span className="text-xl">⚡</span>
-          <span className="text-lg font-bold">Power Plus</span>
-        </div>
+        <BrandMark className="mb-6 px-1" />
         <nav className="flex flex-col gap-1">
           {[...NAV, { to: "/settings", label: "Settings", icon: "⚙️" }].map((n) => (
             <NavLink
@@ -56,7 +54,7 @@ export function AppShell() {
       {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col pb-[calc(64px+env(safe-area-inset-bottom))] md:pb-0">
         <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-bg/85 px-4 py-3 backdrop-blur">
-          <div className="text-lg font-bold md:hidden">Power Plus</div>
+          <BrandMark size="sm" className="md:hidden" />
           <div className="hidden md:block" />
           <div className="flex items-center gap-2">
             <NavLink

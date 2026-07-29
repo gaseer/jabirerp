@@ -116,6 +116,9 @@ export function LineItemGrid({
         rate_paise: ratePaise,
         amount_paise: lineAmountPaise(qty, ratePaise),
         position: Number(r._pos) || 0,
+        // Sections/units are an invoice feature; quotation & bill lines stay flat.
+        section: null,
+        unit: null,
       });
       saved.current.set(r._id, snapshot(r));
     }

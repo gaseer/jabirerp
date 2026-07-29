@@ -3,6 +3,7 @@ import { useAuth } from "@/store/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { BrandMark } from "@/components/BrandMark";
 
 export function Login() {
   const { signIn, signUp } = useAuth();
@@ -44,9 +45,8 @@ export function Login() {
   return (
     <div className="flex min-h-full items-center justify-center p-6">
       <Card className="w-full max-w-sm">
-        <div className="mb-5 flex items-center gap-2">
-          <span className="text-2xl">⚡</span>
-          <h1 className="text-xl font-bold">Power Plus</h1>
+        <div className="mb-5 flex flex-col items-center text-center">
+          <BrandMark lockup />
         </div>
         <p className="mb-4 text-sm text-muted">
           {mode === "in" ? "Sign in to your account" : "Create your account"}

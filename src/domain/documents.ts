@@ -29,7 +29,17 @@ export async function ensureDocument(
 ): Promise<DocumentRow> {
   const existing = await getDocByKind(siteId, kind);
   if (existing) return existing;
-  return documentRepo.put({ site_id: siteId, kind, doc_number: null, status: "draft" });
+  return documentRepo.put({
+    site_id: siteId,
+    kind,
+    doc_number: null,
+    status: "draft",
+    // Invoice-only fields — a quotation/bill never uses them.
+    doc_date: null,
+    title: null,
+    notes: null,
+    discount_paise: 0,
+  });
 }
 
 /**
@@ -52,16 +62,12 @@ export async function convertToBill(siteId: string): Promise<DocumentRow> {
       rate_paise: it.rate_paise,
       amount_paise: it.amount_paise,
       position: it.position,
+      section: it.section,
+      unit: it.unit,
     });
   }
 
-  await documentRepo.put({
-    id: quotation.id,
-    site_id: quotation.site_id,
-    kind: quotation.kind,
-    doc_number: quotation.doc_number,
-    status: "converted",
-  });
+  await documentRepo.put({ ...quotation, status: "converted" });
 
   return bill;
 }

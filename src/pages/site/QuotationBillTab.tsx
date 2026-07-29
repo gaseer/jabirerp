@@ -79,6 +79,9 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
         amount_paise: lineAmountPaise(qty, ratePaise),
         // Keep the row's position on edit; append at the end for a new row.
         position: existing?.position ?? items.length,
+        // Sections/units are an invoice feature; quotation & bill lines stay flat.
+        section: null,
+        unit: null,
       });
       pushSoon();
     },

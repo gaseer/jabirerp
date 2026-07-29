@@ -58,6 +58,8 @@ async function seedBill(siteId: string, amountPaise = 1000000) {
     qty: 1,
     rate_paise: amountPaise,
     amount_paise: amountPaise,
+    section: null,
+    unit: null,
     position: 0,
   });
   await convertToBill(siteId);
@@ -72,6 +74,8 @@ describe("sitePnl", () => {
       qty: 1,
       rate_paise: 500000,
       amount_paise: 500000,
+      section: null,
+      unit: null,
       position: 0,
     });
     const pnl = await sitePnl(SITE);

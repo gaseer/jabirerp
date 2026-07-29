@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
-import { getDocByKind, listItems } from "./documents";
+import { listDocuments, listItems } from "./documents";
 import { documentTotalPaise } from "./quotation";
+import { invoiceTotalPaise } from "./invoice";
 import { listAttendance } from "./attendance";
 import { listTxns, sumPaise } from "./transactions";
 import { wagesEarnedPaise } from "./wages";
@@ -8,7 +9,8 @@ import { empBalancePaise } from "./settlement";
 
 /**
  * P&L semantics (match the prototype):
- * - income = CONVERTED bill totals only (a quotation is not income);
+ * - income = billed totals: the CONVERTED bill plus every DIRECT INVOICE on the
+ *   site (a quotation is not income);
  * - cost = site expenses + attendance wages;
  * - customer advances reduce receivable, never income;
  * - worker payments hit cash, never P&L (wages already did);
@@ -24,10 +26,24 @@ export interface SitePnl {
   profitPaise: number;
 }
 
+/**
+ * Everything billed to the customer for a site: the converted bill (at most
+ * one) plus every direct invoice (many), each net of its discount. Draft
+ * invoices count too — the number tracks what has been entered, exactly like
+ * the bill, so a total never silently reads ₹0 mid-entry.
+ */
 export async function siteBillTotalPaise(siteId: string): Promise<number> {
-  const bill = await getDocByKind(siteId, "bill");
-  if (!bill) return 0;
-  return documentTotalPaise(await listItems(bill.id));
+  const docs = await listDocuments(siteId);
+  let total = 0;
+  for (const doc of docs) {
+    if (doc.kind === "quotation") continue;
+    const items = await listItems(doc.id);
+    total +=
+      doc.kind === "invoice"
+        ? invoiceTotalPaise(items, doc.discount_paise)
+        : documentTotalPaise(items);
+  }
+  return total;
 }
 
 export async function sitePnl(siteId: string): Promise<SitePnl> {

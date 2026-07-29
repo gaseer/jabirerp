@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -13,9 +13,21 @@ import { cn } from "@/lib/utils";
  * Mobile: the whole sheet scrolls horizontally inside its own container so the
  * page body never scrolls sideways; cells stay tap-sized (h-9) and inputs keep
  * 16px text to avoid iOS focus-zoom.
+ *
+ * Pasting a block copied from Excel/Sheets (tab-separated, newline-delimited)
+ * into any cell spills it across the columns and rows to the right/below,
+ * creating rows as needed — the fastest way in for a spreadsheet user.
  */
 
-export type CellType = "text" | "decimal" | "rupee" | "date" | "time" | "select";
+export type CellType =
+  | "text"
+  | "decimal"
+  | "rupee"
+  | "date"
+  | "time"
+  | "select"
+  /** Free text with a dropdown of suggestions (native <datalist>). */
+  | "combo";
 
 export interface GridColumn {
   key: string;
@@ -24,7 +36,7 @@ export interface GridColumn {
   /** CSS grid track, e.g. "72px" or "minmax(120px,1fr)". Defaults per type. */
   width?: string;
   placeholder?: string;
-  /** Options for a `select` column. */
+  /** Options for a `select` or `combo` column. */
   options?: { value: string; label: string }[];
   align?: "left" | "right";
 }
@@ -46,7 +58,21 @@ const DEFAULT_WIDTH: Record<CellType, string> = {
   date: "150px",
   time: "88px",
   select: "minmax(120px,1fr)",
+  combo: "minmax(130px,1fr)",
 };
+
+/**
+ * Split a clipboard payload into a cell matrix. Tabs separate columns (what
+ * Excel/Sheets put on the clipboard); a trailing newline is dropped so a
+ * one-row copy doesn't append a blank row.
+ */
+export function parseClipboardMatrix(text: string): string[][] {
+  return text
+    .replace(/\r\n?/g, "\n")
+    .replace(/\n$/, "")
+    .split("\n")
+    .map((line) => line.split("\t"));
+}
 
 function trackFor(col: GridColumn): string {
   return col.width ?? DEFAULT_WIDTH[col.type];
@@ -60,6 +86,9 @@ export function SheetGrid({
   computed,
   onBlur,
   onDeleteRow,
+  onDuplicateRow,
+  onMoveRow,
+  onCellCommit,
   maxBodyHeight = "52vh",
 }: {
   columns: GridColumn[];
@@ -72,9 +101,22 @@ export function SheetGrid({
   onBlur?: () => void;
   /** Delete a persisted row (index into `rows`). Omit to just drop it locally. */
   onDeleteRow?: (index: number) => void;
+  /** Show a "copy row" action. Omit to hide it. */
+  onDuplicateRow?: (index: number) => void;
+  /** Show ↑/↓ reorder actions. Omit to hide them. */
+  onMoveRow?: (index: number, direction: -1 | 1) => void;
+  /**
+   * Lets a parent post-process one finished cell edit — e.g. autofill the rate
+   * once a known description is picked. Returns the row to store, or void to
+   * keep the plain edit. Called on change (not blur) so picking from a
+   * datalist fills instantly.
+   */
+  onCellCommit?: (row: GridRow, key: string) => GridRow | void;
   maxBodyHeight?: string;
 }) {
   const computedCols = computed ? (Array.isArray(computed) ? computed : [computed]) : [];
+  // Namespaces this grid's <datalist> ids so two grids on one page never clash.
+  const gridId = useId().replace(/:/g, "");
   // Always render one extra blank row after the real ones.
   const display = [...rows, blankRow];
 
@@ -102,13 +144,45 @@ export function SheetGrid({
   });
 
   function setCell(rowIndex: number, key: string, value: string) {
+    const apply = (r: GridRow) => {
+      const edited = { ...r, [key]: value };
+      return onCellCommit?.(edited, key) ?? edited;
+    };
     if (rowIndex < rows.length) {
-      const next = rows.map((r, i) => (i === rowIndex ? { ...r, [key]: value } : r));
-      onChange(next);
+      onChange(rows.map((r, i) => (i === rowIndex ? apply(r) : r)));
     } else {
       // Typing into the trailing blank promotes it to a real row.
-      onChange([...rows, { ...blankRow, [key]: value }]);
+      onChange([...rows, apply({ ...blankRow })]);
     }
+  }
+
+  /**
+   * Spill a copied spreadsheet block from the focused cell: columns to the
+   * right, rows down, appending rows when the block runs past the end. Values
+   * land verbatim — the parent's normal parsing (toPaise, Number) handles
+   * "1,200" or "₹80" exactly as it does typed text.
+   */
+  function handlePaste(e: React.ClipboardEvent, rowIndex: number, colIndex: number) {
+    const text = e.clipboardData.getData("text/plain");
+    if (!text || !/[\t\n\r]/.test(text)) return; // plain single value → let the browser paste it
+    e.preventDefault();
+
+    const matrix = parseClipboardMatrix(text);
+    const next = [...rows];
+    matrix.forEach((line, dr) => {
+      const target = rowIndex + dr;
+      const base = next[target] ?? { ...blankRow };
+      const patched = { ...base };
+      line.forEach((value, dc) => {
+        const col = columns[colIndex + dc];
+        if (col) patched[col.key] = value.trim();
+      });
+      // Run the same commit hook typing would, so autofill still applies.
+      const committed = onCellCommit?.(patched, columns[colIndex]?.key ?? "") ?? patched;
+      if (target < next.length) next[target] = committed;
+      else next.push(committed);
+    });
+    onChange(next);
   }
 
   function moveTo(rowIndex: number, colIndex: number) {
@@ -139,11 +213,12 @@ export function SheetGrid({
     }
   }
 
+  const extraActions = Boolean(onDuplicateRow) || Boolean(onMoveRow);
   const template = [
     "34px", // row number
     ...columns.map(trackFor),
     ...computedCols.map((c) => c.width ?? "94px"),
-    "38px", // delete
+    extraActions ? "108px" : "38px", // row actions
   ].join(" ");
 
   const cellBase =
@@ -151,8 +226,22 @@ export function SheetGrid({
     "placeholder:text-muted/70 focus:border-primary/50 focus:bg-primary-soft/40 " +
     "focus-visible:outline-none";
 
+  const actionBtn =
+    "grid h-7 w-7 shrink-0 place-items-center rounded-sm text-muted " +
+    "hover:bg-primary-soft hover:text-primary disabled:opacity-30 disabled:pointer-events-none";
+
   return (
     <div className="overflow-x-auto rounded-sm border border-border">
+      {/* One datalist per combo column, shared by every row's input. */}
+      {columns
+        .filter((c) => c.type === "combo" && c.options?.length)
+        .map((c) => (
+          <datalist key={c.key} id={`sheet-${gridId}-${c.key}`}>
+            {c.options?.map((o) => (
+              <option key={o.value} value={o.value} label={o.label} />
+            ))}
+          </datalist>
+        ))}
       <div style={{ minWidth: "min-content" }}>
         {/* Header */}
         <div
@@ -207,6 +296,7 @@ export function SheetGrid({
                     onBlur,
                     onKeyDown: (e: React.KeyboardEvent) =>
                       onKeyDown(e, r, ci, c.type === "select"),
+                    onPaste: (e: React.ClipboardEvent) => handlePaste(e, r, ci),
                     className: cn(cellBase, c.align === "right" && "text-right"),
                   };
                   if (c.type === "select") {
@@ -225,6 +315,10 @@ export function SheetGrid({
                       </select>
                     );
                   }
+                  const listId =
+                    c.type === "combo" && c.options?.length
+                      ? `sheet-${gridId}-${c.key}`
+                      : undefined;
                   return (
                     <input
                       {...common}
@@ -233,6 +327,8 @@ export function SheetGrid({
                       inputMode={
                         c.type === "decimal" || c.type === "rupee" ? "decimal" : undefined
                       }
+                      list={listId}
+                      autoComplete={listId ? "off" : undefined}
                       placeholder={c.placeholder}
                       onChange={(e) => setCell(r, c.key, e.target.value)}
                     />
@@ -251,19 +347,53 @@ export function SheetGrid({
                   </div>
                 ))}
 
-                <div className="flex justify-center">
+                <div className="flex items-center justify-center gap-0.5">
                   {!isBlank && (
-                    <button
-                      type="button"
-                      aria-label="Delete row"
-                      className="grid h-7 w-7 place-items-center rounded-sm text-muted hover:bg-red-soft hover:text-red"
-                      onClick={() => {
-                        if (onDeleteRow) onDeleteRow(r);
-                        else onChange(rows.filter((_, i) => i !== r));
-                      }}
-                    >
-                      ✕
-                    </button>
+                    <>
+                      {onMoveRow && (
+                        <>
+                          <button
+                            type="button"
+                            aria-label="Move row up"
+                            disabled={r === 0}
+                            className={actionBtn}
+                            onClick={() => onMoveRow(r, -1)}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Move row down"
+                            disabled={r === rows.length - 1}
+                            className={actionBtn}
+                            onClick={() => onMoveRow(r, 1)}
+                          >
+                            ↓
+                          </button>
+                        </>
+                      )}
+                      {onDuplicateRow && (
+                        <button
+                          type="button"
+                          aria-label="Duplicate row"
+                          className={actionBtn}
+                          onClick={() => onDuplicateRow(r)}
+                        >
+                          ⧉
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        aria-label="Delete row"
+                        className="grid h-7 w-7 shrink-0 place-items-center rounded-sm text-muted hover:bg-red-soft hover:text-red"
+                        onClick={() => {
+                          if (onDeleteRow) onDeleteRow(r);
+                          else onChange(rows.filter((_, i) => i !== r));
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </>
                   )}
                 </div>
               </div>

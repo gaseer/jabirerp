@@ -11,7 +11,7 @@ calling MVP done. Automated: `npm test` (92 tests) and `npm run build` both gree
   `GET /rest/v1/employees?select=hourly_wage_paise&limit=1` and
   `GET /rest/v1/attendance?select=start_time&limit=1` both return 200 (they returned 400/42703 before).
 - [ ] After 0008: add a worker on one device → Sync → worker appears on a second device (this was the broken path). Existing un-pushed workers drain from the outbox on next sync.
-- [ ] `src/lib/pdf.ts` → set `BRAND_PHONE` to the contractor's real phone number (currently `""`, hidden when empty).
+- [x] `src/lib/brand.ts` holds every brand detail. `BRAND_PHONE` is set to **+91 90617 20700** (the number on the logo) and prints under the trading name on every PDF; `BRAND_EMAIL` / `BRAND_ADDRESS` are still `""` — set them there if they should print too (empty lines are skipped, never printed blank).
 
 ## 0.5 Offline hardening (added 2026-07-15 — verified in-browser)
 
@@ -37,7 +37,7 @@ calling MVP done. Automated: `npm test` (92 tests) and `npm run build` both gree
 
 ## 3. PDFs (3 shareable documents)
 
-For each of: **Quotation/Bill** (site → Quotation/Bill tab), **Advance statement** (site → Advances tab), **Settlement statement** (worker → Settlement tab):
+For each of: **Quotation/Bill** (site → Quotation/Bill tab), **Invoice** (site → Invoices tab), **Advance statement** (site → Advances tab), **Settlement statement** (worker → Settlement tab):
 
 - [ ] Desktop: downloads as a file (share falls back to download). Mobile PWA: native share sheet opens.
 - [ ] **Money renders as `Rs 12,500`** — never `₹` garbage glyphs (jsPDF built-in font can't do U+20B9/U+2212). Negative = ASCII hyphen.
@@ -46,13 +46,28 @@ For each of: **Quotation/Bill** (site → Quotation/Bill tab), **Advance stateme
 - [ ] Txn dated exactly on `from` and exactly on `to` appears in BOTH the list and the PDF (inclusive edges).
 - [ ] Site with no converted bill → advance statement omits Bill total / Balance due rows.
 - [ ] Airplane mode after first load → PDF generation still works (chunk precached by PWA).
-- [ ] Statement header shows "Power Plus" + phone; period label reads "All time" when unfiltered.
+- [ ] Period label reads "All time" when unfiltered.
+
+### 3b. Letterhead & branding (added 2026-07-29)
+
+Every PDF shares one letterhead from `src/lib/brand.ts` — change the name or phone there and all four documents follow.
+
+- [ ] **Logo prints on every PDF**: the red/blue bulb mark sits top-left (drawn from its height — it must never look squashed), followed by **POWER PLUS** in bold, **ELECTRICAL AND PLUMBING WORKS** letter-spaced under it, and the phone number under that. Document title (QUOTATION / BILL / INVOICE / ADVANCE STATEMENT / SETTLEMENT STATEMENT) is right-aligned opposite it, with its date/number/period below.
+- [ ] Navy rule with the red accent (both sampled from the logo) closes the letterhead; the tinted "BILL TO / QUOTATION FOR / STATEMENT FOR" card holds the customer details.
+- [ ] **Offline**: airplane mode after first load → the logo still prints (the PNG is precached). If it ever fails to load, the PDF must still generate, just without the mark — never an error.
+- [ ] Table style: navy header row, striped body, navy Total row. Long descriptions wrap instead of overflowing.
+- [ ] **Amount in words** prints under the table ("Rupees Ninety Three Thousand Six Hundred Twenty Only") and matches the Total exactly, including paise.
+- [ ] Sign-off block on the right: "For POWER PLUS ELECTRICAL AND PLUMBING WORKS" over a signature line + "Authorised Signatory".
+- [ ] Quotations (only) carry the 30-day validity note; bills and invoices do not.
+- [ ] Every page footer shows the full trading name and "Page n of m" — check a 60-line invoice that runs to 2+ pages.
+- [ ] Dates on documents show the **year** ("29 Jul 2026"), not just "29 Jul".
+- [ ] App chrome: sidebar, mobile header and the sign-in screen all show the logo; browser tab title and PWA install name read POWER PLUS ELECTRICAL AND PLUMBING WORKS; the installed home-screen icon is the logo mark (reinstall the PWA to re-check — icons are cached hard).
 
 ### 3a. Excel export (📊 button next to each 📄 Share button)
 
 - [ ] Each of the 3 documents also has a **Share Excel** button; it opens the same share sheet / download but as an `.xlsx` file.
 - [ ] Open the file: money is a **real number cell** (rupees) — `=SUM()` over an Amount/Wage column works; whole rupees show `12,500`, fractions `125.5` (no `₹` symbol needed in a spreadsheet).
-- [ ] Content matches the PDF exactly for the same date range: same rows, same section headings (Attendance / Payments / Line items), same summary values.
+- [ ] Content matches the PDF exactly for the same date range: same rows, same section headings (Attendance / Payments / Line items), same summary values. The workbook starts with the POWER PLUS / ELECTRICAL AND PLUMBING WORKS name block (SheetJS cannot embed the logo image — text only, by design).
 - [ ] The `#` index and the Time column stay text; Hours reads as its label (e.g. "8h"), not currency.
 - [ ] Airplane mode after first load → Excel generation still works (xlsx chunk is lazy-loaded + PWA-precached).
 
@@ -147,3 +162,52 @@ Fill several rows → running **Total** footer → **✓ Save (N)** commits all 
 - [ ] On a phone, each grid scrolls **horizontally inside its own box** — the page body never scrolls sideways. Cells stay tap-sized; focusing a text/number cell does **not** trigger iOS zoom (inputs keep 16px).
 - [ ] Grid header row stays visible above the scrolling body; the ＋ blank row and Save button stay reachable.
 - [ ] Every Sites tab (Quotation/Bill, Advances, Expenses, Workers, Tasks — Overview is read-only) and every Worker-detail tab (Attendance, Payments — Settlement is read-only) honours the Excel/Form toggle.
+
+## 10. Direct invoice (added 2026-07-28)
+
+The contractor bills works + items **straight into an invoice** — no quotation,
+no convert step. A site can hold many invoices; each is numbered from one
+running book (`INV-0001`, sequential across all sites). Lines carry an optional
+**Section** ("Works", "Materials"…) and **Unit**, and the header carries a
+number, date, work title, discount and notes.
+
+- [ ] **Apply `0009_direct_invoice.sql`** (Supabase SQL editor). Verify:
+  `GET /rest/v1/documents?select=doc_date,title,notes,discount_paise&limit=1` and
+  `GET /rest/v1/line_items?select=section,unit&limit=1` both return 200 (400/42703 before).
+  Then push a real invoice and confirm the row lands with `kind = 'invoice'` (the widened CHECK).
+- [ ] Dexie upgrades v8 → v9 on first launch with existing data: old documents/line items intact, `discount_paise` reads 0 (never `undefined`), no console errors.
+
+### 10a. Creating and typing an invoice
+- [ ] Site → **Invoices** tab → **＋ New invoice** creates a draft dated today, numbered next in sequence, and opens the full-screen editor. Creating one on a *different* site continues the same numbering (one book, not per site).
+- [ ] Grid columns: `# | Section | Work / Item | Unit | Qty | Rate ₹ | Amount | ↑ ↓ ⧉ ✕`. **Columns:** chips toggle Section and Unit off/on — useful on a phone; toggling never loses typed data.
+- [ ] Typing in the ＋ row spawns the next row and it **inherits the section above** (type "Works" once, not on every line).
+- [ ] Enter → next row, Tab across, ↑/↓ within a column. Amount, the per-section subtotals and the sticky bottom **Total** bar all update as you type.
+- [ ] **Paste from Excel**: copy a block of `description⇥qty⇥rate` rows in Excel/Sheets → click a cell → paste. Rows spill down and across, creating rows as needed; pasting a single value still behaves like a normal paste. Money pasted as `1,200` or `₹1,200` parses correctly.
+- [ ] **Description autocomplete**: typing a work/item billed before offers it in the dropdown (with its last rate); picking it fills **Rate**, **Unit** and **Section** — but never overwrites anything already typed.
+- [ ] **⧉** copies a row directly below it; **↑ / ↓** reorder; **✕** soft-deletes. After any of these, reload → the order is exactly what was on screen (positions persist).
+- [ ] Edits write through to Dexie debounced ~0.5s and immediately on leaving a cell. Reload mid-invoice → nothing lost.
+
+### 10b. Header, discount, totals
+- [ ] Invoice no. / Date / Work title / Notes save on blur (or Enter) — not per keystroke; the field never fights the saved value while typing.
+- [ ] **Discount ₹** subtracts from the subtotal. A discount larger than the subtotal clamps → **Total ₹0, never negative**. A blank/garbage discount = no discount.
+- [ ] Status chip toggles **Draft ⇄ ✓ Issued** and shows the same on the invoice list. (Issued is a label — the invoice stays editable, like the bill.)
+- [ ] **Delete invoice** → confirm → header *and* every line soft-delete (history kept in Dexie/Supabase, gone from every screen and total).
+
+### 10c. Invoice PDF + Excel
+- [ ] **📄 Share Invoice PDF**: header shows Power Plus, "INVOICE", the number + date, BILL TO block and work title. Columns `# | Work / Item | Unit | Qty | Rate | Amount`.
+- [ ] With sections used: each section prints as a shaded heading row with its own **subtotal**; line numbers run 1..n across the whole invoice. With no section on any line: no headings, one plain table.
+- [ ] Footer shows **Subtotal / Discount / Total** when a discount exists, just **Total** when it doesn't. Notes print under the table.
+- [ ] Money renders as `Rs 12,500` (never `₹` garbage). Long descriptions wrap; a 60-line invoice page-breaks with the header repeated and no clipped total.
+- [ ] **📊 Share Invoice Excel**: same sections/subtotals, money in real number cells (`=SUM` works), discount as a negative summary row.
+- [ ] Airplane mode after first load → both still generate (jsPDF/xlsx chunks precached).
+
+### 10d. Invoices in the money numbers
+- [ ] Site → Overview: **Billed total** = converted bill **+ every invoice on the site** (each net of its discount). Balance receivable, Site profit and the Final-settlement card all follow that number.
+- [ ] Reports (P&L) income and Dashboard receivable include invoices; a **deleted** invoice drops straight out of all of them.
+- [ ] An invoice still in **Draft** counts (the number tracks what has been entered) — same as the bill, so a total never reads ₹0 mid-entry.
+- [ ] A quotation that has **not** been converted is still NOT income.
+- [ ] **↓ Pull in quotation lines** (shown only when the site has a quotation) appends copies of the quotation's lines after the existing ones; editing a copy leaves the quotation untouched.
+
+### 10e. Offline + sync
+- [ ] Offline: create an invoice, type 10 lines, set a discount → everything appears instantly, outbox grows, header shows Offline. Reconnect → Sync drains to 0; `documents` + `line_items` rows in Supabase carry the new columns.
+- [ ] Second device/profile pulls the invoice down with sections, units, discount and positions intact, and its Overview shows the same Billed total.

@@ -18,18 +18,37 @@ export interface SiteRow extends BaseEntity {
   status: SiteStatus;
 }
 
-export type DocKind = "quotation" | "bill";
+/**
+ * `quotation`/`bill` are the two ends of the convert flow — at most ONE of each
+ * per site. `invoice` is the DIRECT bill: the contractor types works + items
+ * straight into it, no quotation first, and a site may have many of them.
+ */
+export type DocKind = "quotation" | "bill" | "invoice";
 export type DocStatus = "draft" | "converted" | "final";
 
-/** A quotation or bill header for a site. Total is derived from line_items. */
+/**
+ * A quotation / bill / direct invoice header for a site. Total is always
+ * derived from line_items (minus `discount_paise`), never stored.
+ * `doc_date`/`title`/`notes`/`discount_paise` are only used by invoices;
+ * quotation and bill rows leave them null/0.
+ */
 export interface DocumentRow extends BaseEntity {
   site_id: string;
   kind: DocKind;
   doc_number: string | null;
   status: DocStatus;
+  doc_date: string | null; // local calendar date, YYYY-MM-DD
+  title: string | null; // e.g. "Ground floor wiring"
+  notes: string | null; // printed under the total (terms, thanks…)
+  discount_paise: number; // 0 = none; clamped to the subtotal when applied
 }
 
-/** A single priced line on a document. amount_paise = round(qty * rate_paise). */
+/**
+ * A single priced line on a document. amount_paise = round(qty * rate_paise).
+ * `section` groups lines on an invoice ("Works", "Materials"…) and drives the
+ * printed subtotals; `unit` is the billing unit ("nos", "mtr", "pt"…). Both are
+ * null on quotation/bill lines.
+ */
 export interface LineItemRow extends BaseEntity {
   document_id: string;
   description: string;
@@ -37,6 +56,8 @@ export interface LineItemRow extends BaseEntity {
   rate_paise: number;
   amount_paise: number;
   position: number;
+  section: string | null;
+  unit: string | null;
 }
 
 export type TxnType =
@@ -200,6 +221,27 @@ export class PowerPlusDB extends Dexie {
           a.end_time = `${hh}:${mm}`;
           a.hours = oldHours;
           delete a.unit;
+        });
+    });
+    // v9: direct invoices (Slice 12). documents gain doc_date/title/notes/
+    // discount_paise; line_items gain section/unit. Backfilled so old rows
+    // never carry `undefined` into money math or a Supabase upsert.
+    this.version(9).upgrade(async (tx) => {
+      await tx
+        .table("documents")
+        .toCollection()
+        .modify((d: Record<string, unknown>) => {
+          d.doc_date ??= null;
+          d.title ??= null;
+          d.notes ??= null;
+          d.discount_paise ??= 0;
+        });
+      await tx
+        .table("line_items")
+        .toCollection()
+        .modify((i: Record<string, unknown>) => {
+          i.section ??= null;
+          i.unit ??= null;
         });
     });
   }

@@ -35,6 +35,8 @@ Supabase credentials come from `.env` (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_
 
 **Adding a synced entity** touches all of: Dexie schema version bump in `src/lib/db.ts` → row type + repo in `src/repo/repos.ts` → entry in `SYNC_TABLES` → new SQL migration in `supabase/migrations/`. Migrations are plain SQL applied manually to Supabase (not via CLI); each schema change ships its migration in the same slice.
 
+**Documents** — one `documents` table, three kinds. `quotation` → `bill` is the convert flow (at most one of each per site). `invoice` is the **direct bill**: many per site, numbered from one running book across all sites (`INV-0001`), with `doc_date`/`title`/`notes`/`discount_paise` on the header and `section`/`unit` on each line. Income (`siteBillTotalPaise`) = the converted bill + every invoice, each net of its discount; a quotation is never income.
+
 **Domain layer (`src/domain/`)** — pure derivation over Dexie rows. Ledgers, balances, settlements, and P&L are always computed, never stored. Each module has a colocated `.test.ts`. Pages (`src/pages/`) call domain functions + repos via TanStack Query.
 
 **Single `transactions` table** holds all money movement, typed `customer_advance | site_expense | worker_payment | shop_in | shop_out`. Direction (`in`/`out`) is derived from type (`txnDirection`), never stored. Worker and shop transactions carry **no** `site_id`. Shops are pass-through accounts — they never enter P&L.
@@ -48,7 +50,8 @@ Supabase credentials come from `.env` (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_
 
 - **Money = integer paise everywhere** (storage, math, domain). Format to ₹ only at display via `formatPaise` (`src/lib/money.ts`). Round once, at write time.
 - **Financial rows are append-only + soft-delete.** Corrections are new rows, not edits.
-- **PDFs** (`src/lib/pdf.ts`, `src/lib/statementPdf.ts`): jsPDF + autotable are dynamically imported to keep the main bundle small — keep it that way. jsPDF's font can't render `₹` or `−`, so PDFs use `formatPaisePdf` ("Rs", ASCII hyphen). PDFs are customer-facing: no internal data.
+- **Brand identity lives in `src/lib/brand.ts`** — trading name (`POWER PLUS` / `ELECTRICAL AND PLUMBING WORKS`), contact lines, palette, and the logo assets. Nothing else hardcodes the name. `loadBrandLogo()` memoises the mark as a data URL for jsPDF and resolves `null` on failure, so a PDF never fails to generate over a missing image.
+- **PDFs** (`src/lib/pdf.ts`, `src/lib/statementPdf.ts`): jsPDF + autotable are dynamically imported to keep the main bundle small — keep it that way. jsPDF's font can't render `₹` or `−`, so PDFs use `formatPaisePdf` ("Rs", ASCII hyphen). All four documents share `drawLetterhead` / `drawPartyBlock` / `tableTheme` / `drawClosing` / `paintFooters` — build new documents from those, don't hand-roll a header. `src/lib/pdfPreview.test.ts` (skipped by default) renders real PDFs to disk for eyeballing a layout change. PDFs are customer-facing: no internal data.
 - **TanStack Query gotcha:** `queryFn` must never resolve `undefined` — coalesce getById-style results to `null`.
 
 ## Working conventions

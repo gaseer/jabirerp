@@ -64,6 +64,68 @@ export function paiseToRupees(paise: number): number {
   return Math.trunc(paise) / 100;
 }
 
+const ONES = [
+  "Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+  "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
+  "Seventeen", "Eighteen", "Nineteen",
+];
+const TENS = [
+  "", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety",
+];
+
+/** 0–99 in words. */
+function twoDigits(n: number): string {
+  if (n < 20) return ONES[n];
+  const t = TENS[Math.floor(n / 10)];
+  const o = n % 10;
+  return o ? `${t} ${ONES[o]}` : t;
+}
+
+/** 0–999 in words. */
+function threeDigits(n: number): string {
+  const h = Math.floor(n / 100);
+  const rest = n % 100;
+  if (!h) return twoDigits(rest);
+  return rest ? `${ONES[h]} Hundred ${twoDigits(rest)}` : `${ONES[h]} Hundred`;
+}
+
+/**
+ * Integer paise as the amount-in-words line every Indian bill carries, in the
+ * Indian system (crore / lakh / thousand):
+ * 7512500 -> "Rupees Seventy Five Thousand One Hundred Twenty Five Only".
+ * Paise, when non-zero, print as "… and Fifty Paise Only".
+ */
+export function rupeesInWords(paise: number): string {
+  const neg = paise < 0;
+  const abs = Math.abs(Math.trunc(paise));
+  let rupees = Math.floor(abs / 100);
+  const fraction = abs % 100;
+
+  const parts: string[] = [];
+  const crore = Math.floor(rupees / 10000000);
+  if (crore) {
+    parts.push(`${threeDigits(crore % 1000)} Crore`);
+    rupees %= 10000000;
+  }
+  const lakh = Math.floor(rupees / 100000);
+  if (lakh) {
+    parts.push(`${twoDigits(lakh)} Lakh`);
+    rupees %= 100000;
+  }
+  const thousand = Math.floor(rupees / 1000);
+  if (thousand) {
+    parts.push(`${twoDigits(thousand)} Thousand`);
+    rupees %= 1000;
+  }
+  if (rupees) parts.push(threeDigits(rupees));
+  if (parts.length === 0) parts.push("Zero");
+
+  const rupeeWords = `Rupees ${neg ? "Minus " : ""}${parts.join(" ")}`;
+  return fraction
+    ? `${rupeeWords} and ${twoDigits(fraction)} Paise Only`
+    : `${rupeeWords} Only`;
+}
+
 function groupIndian(n: number): string {
   const s = n.toString();
   if (s.length <= 3) return s;

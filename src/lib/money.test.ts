@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatPaise, paiseToRupees, toPaise } from "./money";
+import { formatPaise, paiseToRupees, rupeesInWords, toPaise } from "./money";
 
 describe("formatPaise", () => {
   it("formats whole rupees with ₹ and no decimals", () => {
@@ -57,5 +57,32 @@ describe("paiseToRupees", () => {
     expect(paiseToRupees(12550)).toBe(125.5);
     expect(paiseToRupees(-85000)).toBe(-850);
     expect(paiseToRupees(0)).toBe(0);
+  });
+});
+
+describe("rupeesInWords", () => {
+  it("writes the amount the way an Indian bill does (lakh / crore)", () => {
+    expect(rupeesInWords(750000)).toBe("Rupees Seven Thousand Five Hundred Only");
+    expect(rupeesInWords(12500000)).toBe("Rupees One Lakh Twenty Five Thousand Only");
+    expect(rupeesInWords(250000000)).toBe("Rupees Twenty Five Lakh Only");
+    expect(rupeesInWords(1234500000)).toBe(
+      "Rupees One Crore Twenty Three Lakh Forty Five Thousand Only",
+    );
+  });
+
+  it("handles the teens and the tens/ones join", () => {
+    expect(rupeesInWords(1900)).toBe("Rupees Nineteen Only");
+    expect(rupeesInWords(4200)).toBe("Rupees Forty Two Only");
+    expect(rupeesInWords(10500)).toBe("Rupees One Hundred Five Only");
+  });
+
+  it("adds the paise clause only when there is a fraction", () => {
+    expect(rupeesInWords(12550)).toBe("Rupees One Hundred Twenty Five and Fifty Paise Only");
+    expect(rupeesInWords(12500)).toBe("Rupees One Hundred Twenty Five Only");
+  });
+
+  it("covers zero and negative totals", () => {
+    expect(rupeesInWords(0)).toBe("Rupees Zero Only");
+    expect(rupeesInWords(-50000)).toBe("Rupees Minus Five Hundred Only");
   });
 });

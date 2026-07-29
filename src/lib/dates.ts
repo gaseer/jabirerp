@@ -23,6 +23,17 @@ export function formatDate(iso: string): string {
   });
 }
 
+/** "2026-07-12" -> "12 Jul 2026". Documents carry the year; lists don't need it. */
+export function formatDateLong(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  return new Date(y, m - 1, d).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 export interface DateRange {
   from?: string; // inclusive YYYY-MM-DD
   to?: string; // inclusive YYYY-MM-DD

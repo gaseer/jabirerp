@@ -40,22 +40,21 @@ export default defineConfig(({ command, mode }) => {
         // autoUpdate: new deploys activate on next launch without a prompt UI —
         // "prompt" needs an update banner we never built, so updates were stuck.
         registerType: "autoUpdate",
-        includeAssets: ["favicon.svg", "pwa-icon.svg"],
+        includeAssets: ["favicon.svg", "pwa-icon.svg", "pwa-icon.png"],
         manifest: {
-          name: "Power Plus",
+          name: "POWER PLUS ELECTRICAL AND PLUMBING WORKS",
+          // Home-screen label — must stay short, the full name is truncated there.
           short_name: "Power Plus",
-          description: "Offline-first contractor ERP",
+          description: "Power Plus Electrical and Plumbing Works — offline-first contractor ERP",
           theme_color: "#2563eb",
           background_color: "#f4f6f9",
           display: "standalone",
           start_url: "/",
           icons: [
-            {
-              src: "pwa-icon.svg",
-              sizes: "any",
-              type: "image/svg+xml",
-              purpose: "any maskable",
-            },
+            // The real logo mark; the old placeholder SVG stays as a fallback.
+            { src: "pwa-icon.png", sizes: "512x512", type: "image/png", purpose: "any" },
+            { src: "pwa-icon.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+            { src: "pwa-icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
           ],
         },
         workbox: {

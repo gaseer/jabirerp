@@ -4,13 +4,16 @@ import type {
   TransactionRow,
   LineItemRow,
   DocKind,
+  DocumentRow,
 } from "@/lib/db";
 import { paiseToRupees } from "@/lib/money";
 import { formatDate, rangeLabel, todayIso, type DateRange } from "@/lib/dates";
-import { BRAND, shareOrDownloadBlob, slugFilename } from "@/lib/pdf";
+import { shareOrDownloadBlob, slugFilename } from "@/lib/pdf";
+import { BRAND_NAME, BRAND_SUBTITLE } from "@/lib/brand";
 import type { Settlement } from "@/domain/settlement";
 import { sumPaise } from "@/domain/transactions";
 import { documentTotalPaise } from "@/domain/quotation";
+import { groupSections, invoiceTotals, isUnsectioned } from "@/domain/invoice";
 import { hoursLabel, timeRangeLabel } from "@/domain/wages";
 
 /**
@@ -50,7 +53,10 @@ async function renderStatementXlsx(spec: XlsxSpec): Promise<void> {
   const XLSX = await import("xlsx");
 
   const aoa: Cell[][] = [];
-  aoa.push([BRAND]);
+  // Letterhead in text form — SheetJS (community build) cannot embed images,
+  // so the workbook carries the same name block the PDF prints under the logo.
+  aoa.push([BRAND_NAME]);
+  aoa.push([BRAND_SUBTITLE]);
   aoa.push([spec.title]);
   aoa.push([spec.partyName]);
   if (spec.partySub) aoa.push([spec.partySub]);
@@ -135,6 +141,64 @@ export async function shareDocumentXlsx(
     ],
     summary: [{ k: "Total", v: paiseToRupees(total) }],
     filename: slugFilename(kind, site.name, "xlsx"),
+  });
+}
+
+/**
+ * Direct-invoice workbook — one section per group with its own subtotal row,
+ * then Subtotal / Discount / Total. Money lands in real number cells so the
+ * recipient can re-check the arithmetic with =SUM.
+ */
+export async function shareInvoiceXlsx(
+  site: SiteRow,
+  invoice: DocumentRow,
+  items: LineItemRow[],
+): Promise<void> {
+  const sections = groupSections(items);
+  const flat = isUnsectioned(sections);
+  const totals = invoiceTotals(items, invoice.discount_paise);
+
+  const head = ["#", "Work / Item", "Unit", "Qty", "Rate", "Amount"];
+  let lineNo = 0;
+  const xlsxSections: XlsxSection[] = sections.map((section) => ({
+    heading: flat ? "Line items" : section.name,
+    head,
+    rows: section.items.map((it) => [
+      String(++lineNo),
+      it.description,
+      it.unit ?? "",
+      it.qty,
+      paiseToRupees(it.rate_paise),
+      paiseToRupees(it.amount_paise),
+    ]),
+    foot: flat
+      ? ["", "", "", "", "Subtotal", paiseToRupees(section.subtotalPaise)]
+      : ["", "", "", "", `${section.name} subtotal`, paiseToRupees(section.subtotalPaise)],
+  }));
+
+  const summary = [{ k: "Subtotal", v: paiseToRupees(totals.subtotalPaise) }];
+  if (totals.discountPaise > 0)
+    summary.push({ k: "Discount", v: -paiseToRupees(totals.discountPaise) });
+  summary.push({ k: "Total", v: paiseToRupees(totals.totalPaise) });
+
+  await renderStatementXlsx({
+    sheetName: "Invoice",
+    title: `INVOICE ${invoice.doc_number ?? ""}`.trim(),
+    partyName: site.name,
+    partySub:
+      [invoice.title, site.location, site.phone, site.work_type]
+        .filter(Boolean)
+        .join("  ·  ") || undefined,
+    periodLabel: invoice.doc_date ? formatDate(invoice.doc_date) : todayIso(),
+    sections: xlsxSections.length
+      ? xlsxSections
+      : [{ heading: "Line items", head, rows: [] }],
+    summary,
+    filename: slugFilename(
+      invoice.doc_number?.toLowerCase() || "invoice",
+      site.name,
+      "xlsx",
+    ),
   });
 }
 
