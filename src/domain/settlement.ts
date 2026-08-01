@@ -30,8 +30,11 @@ export async function buildSettlement(
   employeeId: string,
   range: DateRange,
 ): Promise<Settlement> {
+  // Pending/rejected shifts don't earn wages until approved — settlement
+  // (balance payable, and the statement PDF built from it) must never count
+  // them.
   const [attendanceRows, paymentRows] = await Promise.all([
-    listAttendance({ employeeId, ...range }),
+    listAttendance({ employeeId, status: "approved", ...range }),
     listTxns({ employeeId, types: ["worker_payment"], ...range }),
   ]);
 
@@ -39,7 +42,7 @@ export async function buildSettlement(
   if (range.from) {
     const before = { to: prevDay(range.from) };
     const [prevAtt, prevPay] = await Promise.all([
-      listAttendance({ employeeId, ...before }),
+      listAttendance({ employeeId, status: "approved", ...before }),
       listTxns({ employeeId, types: ["worker_payment"], ...before }),
     ]);
     openingBalancePaise = wagesEarnedPaise(prevAtt) - sumPaise(prevPay);

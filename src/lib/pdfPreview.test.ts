@@ -1,7 +1,9 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import type { DocumentRow, LineItemRow, SiteRow } from "@/lib/db";
+import type { DocumentRow, LineItemRow, ShopRow, SiteRow, TransactionRow } from "@/lib/db";
+import type { ShopLedger } from "@/domain/shops";
 import { shareInvoicePdf, shareDocumentPdf } from "./pdf";
+import { shareShopStatementPdf } from "./statementPdf";
 
 const OUT = process.env.PDF_PREVIEW_DIR ?? "/tmp";
 
@@ -113,6 +115,68 @@ const items = [
   line(9, "Water tank connection with ball valve", "Plumbing", "nos", 1, 145000),
 ];
 
+const shop: ShopRow = {
+  id: "sh1",
+  owner_id: "u1",
+  created_at: "",
+  updated_at: "",
+  deleted_at: null,
+  _dirty: 0,
+  name: "Anand Hardware & Electricals",
+  phone: "+91 94470 55221",
+  site_id: "s1",
+};
+
+const shopTxn = (
+  i: number,
+  txn_type: "shop_in" | "shop_out",
+  amount_paise: number,
+  txn_date: string,
+  mode: "cash" | "bank",
+  note: string | null,
+): TransactionRow => ({
+  id: `t${i}`,
+  owner_id: "u1",
+  created_at: "",
+  updated_at: "",
+  deleted_at: null,
+  _dirty: 0,
+  txn_type,
+  amount_paise,
+  mode,
+  txn_date,
+  site_id: null,
+  employee_id: null,
+  shop_id: "sh1",
+  category: null,
+  note,
+});
+
+const shopLedger: ShopLedger = (() => {
+  const rows = [
+    shopTxn(0, "shop_in", 1250000, "2026-06-04", "cash", "Wiring materials — advance from owner"),
+    shopTxn(1, "shop_out", 800000, "2026-06-09", "bank", "Paid against bill 4471"),
+    shopTxn(2, "shop_in", 460000, "2026-06-18", "cash", null),
+    shopTxn(3, "shop_out", 300000, "2026-06-27", "cash", "Part payment"),
+    shopTxn(4, "shop_in", 900000, "2026-07-05", "bank", "Bathroom fittings + CPVC"),
+  ];
+  const opening = 175000;
+  let holding = opening;
+  const entries = rows.map((txn) => {
+    const direction = txn.txn_type === "shop_in" ? ("in" as const) : ("out" as const);
+    holding += direction === "in" ? txn.amount_paise : -txn.amount_paise;
+    return { txn, direction, holdingAfterPaise: holding };
+  });
+  entries.reverse();
+  return {
+    entries,
+    openingHoldingPaise: opening,
+    periodReceivedPaise: 2610000,
+    periodPaidPaise: 1100000,
+    closingHoldingPaise: opening + 2610000 - 1100000,
+  };
+})();
+
 /**
  * Not an assertion test — it renders the real customer-facing PDFs so the
  * layout can be eyeballed after a design change. Skipped by default; run it
@@ -135,5 +199,18 @@ describe("pdf preview", () => {
     await shareDocumentPdf(site, "quotation", items.slice(0, 4));
     await new Promise((r) => setTimeout(r, 200));
     expect(written.length).toBe(2);
+  });
+
+  it.skip("writes a shop statement PDF to the scratchpad", async () => {
+    const written: string[] = [];
+    stubBrowser((blob, name) => {
+      written.push(name);
+      blob.arrayBuffer().then((buf) => {
+        writeFileSync(`${OUT}/${name}`, Buffer.from(buf));
+      });
+    });
+    await shareShopStatementPdf(shop, shopLedger, { from: "2026-06-01" }, site.name);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(written.length).toBe(1);
   });
 });

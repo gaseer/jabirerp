@@ -1,8 +1,12 @@
 import { db, getMeta, setMeta } from "@/lib/db";
 import { supabase } from "@/lib/supabase";
-import { currentOwnerId } from "@/store/auth";
+import { currentOwnerId, isWorkerSession } from "@/store/auth";
 import type { BaseEntity, SyncEngine } from "./Repo";
 import { SYNC_TABLES, tableFor } from "./syncRegistry";
+
+/** Tables a worker session has any RLS access to — pulling the rest just
+ * wastes a round trip (RLS returns empty for them), so skip it outright. */
+const WORKER_SYNC_TABLE_NAMES = new Set(["employees", "attendance", "transactions"]);
 
 const EPOCH = "1970-01-01T00:00:00Z";
 
@@ -112,8 +116,10 @@ export class SupabaseSync implements SyncEngine {
   async pull(): Promise<{ pulled: number }> {
     if (!isOnline()) return { pulled: 0 };
     let pulled = 0;
+    const worker = isWorkerSession();
 
     for (const st of SYNC_TABLES) {
+      if (worker && !WORKER_SYNC_TABLE_NAMES.has(st.name)) continue;
       const cursorKey = `cursor:${st.name}`;
       let cursor = (await getMeta(cursorKey)) ?? EPOCH;
 

@@ -9,7 +9,7 @@ import {
 } from "@/repo/repos";
 import { useAuth } from "@/store/auth";
 import { convertToBill, ensureDocument } from "./documents";
-import { markAttendance } from "./attendance";
+import { markAttendance, markSelfAttendance } from "./attendance";
 import {
   addCustomerAdvance,
   addShopTxn,
@@ -132,6 +132,27 @@ describe("sitePnl", () => {
     expect((await sitePnl(SITE)).profitPaise).toBe(900000);
     await transactionRepo.softDelete(e.id);
     expect((await sitePnl(SITE)).profitPaise).toBe(1000000);
+  });
+
+  it("a worker-submitted pending shift doesn't count as a wage cost until approved", async () => {
+    await seedBill(SITE); // ₹10,000
+    const emp = await employeeRepo.put({
+      name: "W",
+      phone: null,
+      role: "Helper",
+      hourly_wage_paise: 6250, // 8h shift = 50000
+    });
+    await markSelfAttendance({
+      employeeId: emp.id,
+      siteId: SITE,
+      workDate: "2026-07-03",
+      startTime: "09:00",
+      endTime: "17:00",
+    });
+
+    const pnl = await sitePnl(SITE);
+    expect(pnl.wagesPaise).toBe(0);
+    expect(pnl.profitPaise).toBe(1000000);
   });
 });
 

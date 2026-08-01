@@ -1,4 +1,4 @@
-import type { SiteRow, EmployeeRow, TransactionRow } from "@/lib/db";
+import type { SiteRow, EmployeeRow, ShopRow, TransactionRow } from "@/lib/db";
 import { formatPaisePdf } from "@/lib/money";
 import { formatDate, rangeLabel, todayIso, type DateRange } from "@/lib/dates";
 import {
@@ -15,6 +15,7 @@ import {
 } from "@/lib/pdf";
 import { BRAND_COLORS } from "@/lib/brand";
 import type { Settlement } from "@/domain/settlement";
+import type { ShopLedger } from "@/domain/shops";
 import { sumPaise } from "@/domain/transactions";
 import { hoursLabel, timeRangeLabel } from "@/domain/wages";
 
@@ -28,6 +29,8 @@ export interface StatementSection {
   head: string[];
   rows: string[][];
   foot?: string[];
+  /** First right-aligned column index. Defaults to the last column only. */
+  rightAlignFrom?: number;
 }
 
 export interface StatementSpec {
@@ -67,9 +70,12 @@ export async function renderStatementPdf(spec: StatementSpec): Promise<void> {
         ? section.rows
         : [["—", ...section.head.slice(1).map(() => "")]],
       foot: section.foot ? [section.foot] : undefined,
-      columnStyles: {
-        [section.head.length - 1]: { halign: "right", cellWidth: 90 },
-      },
+      columnStyles: Object.fromEntries(
+        section.head
+          .map((_, i) => i)
+          .filter((i) => i >= (section.rightAlignFrom ?? section.head.length - 1))
+          .map((i) => [i, { halign: "right", cellWidth: 90 }] as const),
+      ),
     });
     y = lastTableY(doc) + 28;
   }
@@ -142,6 +148,59 @@ export async function shareAdvanceStatementPdf(
     ],
     summary,
     filename: slugFilename("advance-statement", site.name),
+  });
+}
+
+/**
+ * Shop statement — every received/paid txn with the running holding, so the
+ * shop owner can see exactly what is still held for them. Pass-through money:
+ * this is never income, and the closing holding is what remains payable.
+ */
+export async function shareShopStatementPdf(
+  shop: ShopRow,
+  ledger: ShopLedger,
+  range: DateRange,
+  siteName?: string,
+): Promise<void> {
+  const summary: StatementSpec["summary"] = [];
+  if (range.from)
+    summary.push({ k: "Opening holding", v: formatPaisePdf(ledger.openingHoldingPaise) });
+  summary.push(
+    { k: "Received this period", v: formatPaisePdf(ledger.periodReceivedPaise) },
+    { k: "Paid this period", v: formatPaisePdf(ledger.periodPaidPaise) },
+    {
+      k: "Holding (still to pay the shop)",
+      v: formatPaisePdf(ledger.closingHoldingPaise),
+      emphasis: true,
+    },
+  );
+
+  await renderStatementPdf({
+    title: "SHOP STATEMENT",
+    partyName: shop.name,
+    partySub: [siteName, shop.phone].filter(Boolean).join("  ·  ") || undefined,
+    periodLabel: rangeLabel(range),
+    sections: [
+      {
+        heading: "Transactions",
+        head: ["#", "Date", "Type", "Mode", "Note", "Amount", "Holding"],
+        rows: ledger.entries.map((e, i) => [
+          String(i + 1),
+          formatDate(e.txn.txn_date),
+          e.direction === "in" ? "Received" : "Paid",
+          e.txn.mode === "bank" ? "Bank" : "Cash",
+          e.txn.note ?? "",
+          formatPaisePdf(e.txn.amount_paise),
+          formatPaisePdf(e.holdingAfterPaise),
+        ]),
+        rightAlignFrom: 5,
+        // Received/paid totals live in the summary block; the table foot
+        // closes the running column it belongs to.
+        foot: ["", "", "", "", "", "Closing holding", formatPaisePdf(ledger.closingHoldingPaise)],
+      },
+    ],
+    summary,
+    filename: slugFilename("shop-statement", shop.name),
   });
 }
 

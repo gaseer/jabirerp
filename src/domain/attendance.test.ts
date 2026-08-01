@@ -2,7 +2,14 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { attendanceRepo, employeeRepo } from "@/repo/repos";
 import { useAuth } from "@/store/auth";
-import { editAttendance, markAttendance } from "./attendance";
+import {
+  approveAttendance,
+  editAttendance,
+  listAttendance,
+  markAttendance,
+  markSelfAttendance,
+  rejectAttendance,
+} from "./attendance";
 
 let EMP = "";
 
@@ -141,5 +148,87 @@ describe("editAttendance", () => {
     await expect(edit(a.id, "09:00", "13:00")).rejects.toThrow(
       "Attendance entry not found",
     );
+  });
+
+  it("preserves status — editing a pending shift does not silently approve it", async () => {
+    const a = await markSelfAttendance({
+      employeeId: EMP,
+      siteId: "site-1",
+      workDate: "2026-07-18",
+      startTime: "09:00",
+      endTime: "17:00",
+    });
+    const updated = await edit(a.id, "09:00", "13:00");
+    expect(updated.status).toBe("pending");
+  });
+});
+
+describe("attendance status", () => {
+  it("markAttendance (admin) defaults to approved", async () => {
+    const a = await mark("09:00", "17:00");
+    expect(a.status).toBe("approved");
+  });
+
+  it("markSelfAttendance (worker) always lands pending", async () => {
+    const a = await markSelfAttendance({
+      employeeId: EMP,
+      siteId: "site-1",
+      workDate: "2026-07-18",
+      startTime: "09:00",
+      endTime: "17:00",
+    });
+    expect(a.status).toBe("pending");
+  });
+
+  it("a pending shift still blocks an overlapping admin-marked shift", async () => {
+    await markSelfAttendance({
+      employeeId: EMP,
+      siteId: "site-1",
+      workDate: "2026-07-18",
+      startTime: "09:00",
+      endTime: "17:00",
+    });
+    await expect(mark("12:00", "18:00")).rejects.toThrow("Already marked");
+  });
+
+  it("approveAttendance/rejectAttendance flip status without touching hours/wage", async () => {
+    const a = await markSelfAttendance({
+      employeeId: EMP,
+      siteId: "site-1",
+      workDate: "2026-07-18",
+      startTime: "09:00",
+      endTime: "17:00",
+    });
+    const approved = await approveAttendance(a.id);
+    expect(approved.status).toBe("approved");
+    expect(approved.hours).toBe(8);
+    expect(approved.wage_paise).toBe(80000);
+
+    const b = await markSelfAttendance({
+      employeeId: EMP,
+      siteId: "site-1",
+      workDate: "2026-07-19",
+      startTime: "09:00",
+      endTime: "17:00",
+    });
+    const rejected = await rejectAttendance(b.id);
+    expect(rejected.status).toBe("rejected");
+  });
+
+  it("listAttendance filters by status", async () => {
+    await mark("09:00", "13:00", "2026-07-18");
+    await markSelfAttendance({
+      employeeId: EMP,
+      siteId: "site-1",
+      workDate: "2026-07-19",
+      startTime: "09:00",
+      endTime: "13:00",
+    });
+    const pending = await listAttendance({ employeeId: EMP, status: "pending" });
+    expect(pending).toHaveLength(1);
+    expect(pending[0].work_date).toBe("2026-07-19");
+
+    const both = await listAttendance({ employeeId: EMP, status: ["pending", "approved"] });
+    expect(both).toHaveLength(2);
   });
 });

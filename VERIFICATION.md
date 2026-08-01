@@ -1,7 +1,7 @@
 # Power Plus — MVP Verification Checklist
 
 Slices 3–11 built in one batch. Everything below needs a human pass before
-calling MVP done. Automated: `npm test` (92 tests) and `npm run build` both green.
+calling MVP done. Automated: `npm test` (138 tests) and `npm run build` both green.
 
 ## 0. One-time setup
 
@@ -11,6 +11,7 @@ calling MVP done. Automated: `npm test` (92 tests) and `npm run build` both gree
   `GET /rest/v1/employees?select=hourly_wage_paise&limit=1` and
   `GET /rest/v1/attendance?select=start_time&limit=1` both return 200 (they returned 400/42703 before).
 - [ ] After 0008: add a worker on one device → Sync → worker appears on a second device (this was the broken path). Existing un-pushed workers drain from the outbox on next sync.
+- [ ] **Apply `0010_worker_access.sql`** (Supabase SQL editor). Verify: `GET /rest/v1/employees?select=auth_user_id&limit=1` and `GET /rest/v1/attendance?select=status&limit=1` both return 200; `select proname from pg_proc where proname in ('claim_employee','worker_site_names')` lists both.
 - [x] `src/lib/brand.ts` holds every brand detail. `BRAND_PHONE` is set to **+91 90617 20700** (the number on the logo) and prints under the trading name on every PDF; `BRAND_EMAIL` / `BRAND_ADDRESS` are still `""` — set them there if they should print too (empty lines are skipped, never printed blank).
 
 ## 0.5 Offline hardening (added 2026-07-15 — verified in-browser)
@@ -113,7 +114,10 @@ Every PDF shares one letterhead from `src/lib/brand.ts` — change the name or p
 - [ ] **Tasks tab**: add, toggle check/strikethrough, delete, "No pending works 🎉" empty state, oldest first.
 - [ ] **Workers page**: card shows role, wage/hr, balance (amber payable / green settled / "advance given"); detail has Attendance | Payments | Settlement tabs.
 - [ ] **Ledger**: IN/OUT badges, Cash/Bank tags, party names (site · category for expenses), filters + Clear-all.
-- [ ] **Shops**: total-holding stat, per-shop Received/Paid/Holding, Pending/Cleared pill, "Pay shop" prefills the pending amount, site link navigates.
+- [ ] **Shops**: total-holding stat; each shop card is collapsed to name + Holding + Pending/Cleared pill; tapping the name expands it (▶ rotates) and reveals site link/phone, Received/Paid/Holding strip, transaction history and the ＋ Received / → Pay shop buttons ("Pay shop" still prefills the pending amount). Site link navigates without toggling the card.
+- [ ] **Shop history**: every Received and Pay-shop txn listed newest-first with date, Cash/Bank tag, note, signed amount (green +/red −) and the running Holding under it. The top row's running Holding equals the card's Holding; the oldest row equals the first txn. Collapsed cards fetch nothing (expand → rows appear).
+- [ ] **Shop history range + delete**: From/To narrows the list, adds an "Opening holding" line, and opening + received − paid still equals Holding. 🗑 on a txn asks first, then updates the card, the total-holding stat, the Dashboard tile and the Ledger page.
+- [ ] **Shop statement**: 📄 PDF + 📊 Excel (disabled when the period is empty) — brand letterhead, `#/Date/Type/Mode/Note/Amount/Holding` table matching the screen, summary ending in "Holding (still to pay the shop)". PDF prints `Rs`, not `₹`. Excel money cells are real numbers (`=SUM` works).
 - [ ] **Reports**: overall income-vs-cost bars, margin %, per-site cards, "Shop money excluded" subtitle. Income counts ONLY converted bills (site with unconverted quotation contributes 0).
 - [ ] **Nav**: 6 items incl. P&L 📊, mobile bottom bar not cramped (grid-cols-6). Settings reachable from the **desktop sidebar** (⚙️ Settings, below P&L) and the **mobile header** (⚙️ gear, left of the sync pill).
 
@@ -211,3 +215,19 @@ number, date, work title, discount and notes.
 ### 10e. Offline + sync
 - [ ] Offline: create an invoice, type 10 lines, set a discount → everything appears instantly, outbox grows, header shows Offline. Reconnect → Sync drains to 0; `documents` + `line_items` rows in Supabase carry the new columns.
 - [ ] Second device/profile pulls the invoice down with sections, units, discount and positions intact, and its Overview shows the same Billed total.
+
+## 11. Worker self-service login (RBAC, added 2026-08-01)
+
+Field workers sign in with **name + phone only** (no PIN — a deliberate trade-off; the "password" is derived deterministically from the phone number, see `src/lib/workerAuth.ts`) and stay signed in until they explicitly hit Logout, same offline-durable session as the owner. They can mark their own attendance (lands **pending** until the owner approves it), and see only their own attendance/payments/settlement — enforced by RLS, not just hidden UI.
+
+- [ ] **AuthGate**: the sign-in screen shows a toggle ("I'm a worker — sign in instead"). The owner's existing email/password screen is unchanged.
+- [ ] **Activation**: on the Worker sign-in screen, enter a name+phone that does NOT match any worker you've added → clear error ("No matching worker found…"), not signed in. Add that worker in Workers.tsx with the exact same name+phone → retry → succeeds.
+- [ ] **Second device**: sign in with the same name+phone on a different browser/incognito profile → succeeds immediately (no re-activation), same worker.
+- [ ] **Stay signed in**: close the worker's browser/tab and reopen later (including after a while offline) → still signed in, no re-entry. Only tapping **Logout** signs them out.
+- [ ] **Mark attendance**: Site picker shows only site NAMES (no address/customer/financial data). Submitting shows **Pending approval**; the worker's own Wages(period) total and Settlement balance do NOT move; the site's wages/profit on the owner side do NOT move either.
+- [ ] **Owner approves**: Worker detail → Attendance tab shows the pending row with a ✓/✕ next to the usual ✏️/🗑. ✓ Approve → status flips, the worker's balance, the site's wages/profit, and Workers-due tile all update. A rejected (✕) row stays excluded permanently and never reappears as pending.
+- [ ] **Isolation (the actual boundary, not just hidden nav)**: from the worker's signed-in session, direct Supabase REST calls to `sites`, `documents`, `line_items`, `shops`, `site_tasks`, `profiles`, or another worker's `attendance`/`transactions` rows all return empty/403 — RLS, not the UI, is what blocks them.
+- [ ] **Offline marking**: online once (site cache populated), then DevTools → Network → Offline → Mark attendance still works from the cached site-name list; outbox grows; reconnect → syncs, still lands pending.
+- [ ] **Reset login**: Workers.tsx card shows "🔗 Worker login activated" once claimed, with a **Reset login** button. Reset it → the worker is signed out of nothing automatically (their existing session keeps working until they log out), but a NEW device can now re-activate with the same name+phone.
+- [ ] **Shared-device isolation**: sign in as the owner, then sign in as a worker on the SAME browser (or vice versa) → local data resets cleanly on the identity switch, no owner data visible to the worker session and no worker data lingering after switching back.
+- [ ] **Existing admin flows unaffected**: every admin-marked attendance row still lands "approved" immediately with no pill, exactly as before this slice.

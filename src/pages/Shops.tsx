@@ -2,19 +2,28 @@ import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ShopRow, TxnMode } from "@/lib/db";
-import { shopRepo, siteRepo } from "@/repo/repos";
+import { shopRepo, siteRepo, transactionRepo } from "@/repo/repos";
 import { sync } from "@/repo/SupabaseSync";
 import { addShopTxn } from "@/domain/transactions";
-import { shopFigures, shopDuesTotalPaise, type ShopFigures } from "@/domain/shops";
+import {
+  buildShopLedger,
+  shopFigures,
+  shopDuesTotalPaise,
+  type ShopFigures,
+} from "@/domain/shops";
+import { shareShopStatementPdf } from "@/lib/statementPdf";
+import { shareShopStatementXlsx } from "@/lib/xlsx";
 import { formatPaise, toPaise } from "@/lib/money";
-import { todayIso } from "@/lib/dates";
+import { formatDate, todayIso, type DateRange } from "@/lib/dates";
 import { matchesQuery } from "@/lib/search";
 import { useEntryMode } from "@/store/settings";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { ModeTag } from "@/components/ModeTag";
 import { ModeToggle } from "@/components/ModeToggle";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { SearchInput } from "@/components/SearchInput";
 import { EntryGrid } from "@/components/grid/EntryGrid";
 import type { GridColumn } from "@/components/grid/SheetGrid";
@@ -71,6 +80,11 @@ export function Shops() {
     qc.invalidateQueries({ queryKey: ["shops"] });
     qc.invalidateQueries({ queryKey: ["shop-figures"] });
     qc.invalidateQueries({ queryKey: ["shop-dues-total"] });
+    // Shop money is pass-through but it IS real cash/bank — the Ledger and
+    // Dashboard balance tiles go stale on every shop txn.
+    qc.invalidateQueries({ queryKey: ["balances"] });
+    qc.invalidateQueries({ queryKey: ["ledger"] });
+    qc.invalidateQueries({ queryKey: ["recent-activity"] });
   };
 
   const saveShop = useMutation({
@@ -298,6 +312,11 @@ export function Shops() {
   );
 }
 
+/**
+ * One shop as an accordion: collapsed shows the summary line, expanded shows
+ * every shop_in/shop_out with the running holding. The ledger query is lazy
+ * (`enabled: open`) so a long shop list does no per-shop IndexedDB work.
+ */
 function ShopCard({
   shop,
   figures,
@@ -311,6 +330,9 @@ function ShopCard({
   onDelete: () => void;
   onChanged: () => void;
 }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [range, setRange] = useState<DateRange>({});
   const [form, setForm] = useState<{
     type: "shop_in" | "shop_out";
     amount: string;
@@ -321,6 +343,18 @@ function ShopCard({
   const [err, setErr] = useState<string | null>(null);
 
   const pending = figures?.pendingPaise ?? 0;
+
+  const { data: ledger } = useQuery({
+    queryKey: ["shop-ledger", shop.id, range],
+    queryFn: () => buildShopLedger(shop.id, range),
+    enabled: open,
+  });
+  const entries = ledger?.entries ?? [];
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["shop-ledger", shop.id] });
+    onChanged();
+  };
 
   const add = useMutation({
     mutationFn: async () => {
@@ -336,12 +370,20 @@ function ShopCard({
     onSuccess: () => {
       setForm(null);
       setErr(null);
-      onChanged();
+      refresh();
     },
     onError: (e) => setErr(e instanceof Error ? e.message : "Could not save"),
   });
 
-  function open(type: "shop_in" | "shop_out") {
+  const removeTxn = useMutation({
+    mutationFn: async (id: string) => {
+      await transactionRepo.softDelete(id);
+      pushSoon();
+    },
+    onSuccess: refresh,
+  });
+
+  function openForm(type: "shop_in" | "shop_out") {
     setForm({
       type,
       // Paying the shop usually clears what is held — prefill it.
@@ -352,22 +394,40 @@ function ShopCard({
     });
   }
 
+  async function sharePdf() {
+    if (ledger) await shareShopStatementPdf(shop, ledger, range, siteName);
+  }
+
+  async function shareExcel() {
+    if (ledger) await shareShopStatementXlsx(shop, ledger, range, siteName);
+  }
+
   return (
     <Card className="space-y-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="truncate font-semibold">{shop.name}</div>
-          <div className="truncate text-sm text-muted">
-            {siteName ? (
-              <Link to={`/sites/${shop.site_id}`} className="text-primary">
-                📍 {siteName}
-              </Link>
-            ) : (
-              "No site linked"
+      <div className="flex items-start gap-2">
+        {/* Toggle covers the name block only — the site link and the delete
+            button are siblings, never nested inside a button. */}
+        <button
+          className="flex min-w-0 flex-1 items-start gap-2 text-left"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span
+            className={cn(
+              "mt-0.5 shrink-0 text-muted transition-transform",
+              open && "rotate-90",
             )}
-            {shop.phone ? ` · ${shop.phone}` : ""}
-          </div>
-        </div>
+            aria-hidden
+          >
+            ▶
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-semibold">{shop.name}</span>
+            <span className={cn("block text-sm", pending > 0 ? "text-amber" : "text-muted")}>
+              Holding {formatPaise(pending)}
+            </span>
+          </span>
+        </button>
         <span
           className={cn(
             "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",
@@ -381,74 +441,186 @@ function ShopCard({
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <div>
-          <div className="text-xs text-muted">Received</div>
-          <div className="font-semibold text-green">
-            {formatPaise(figures?.receivedPaise ?? 0)}
+      {open && (
+        <div className="space-y-3 border-t border-border pt-3">
+          <div className="truncate text-sm text-muted">
+            {siteName ? (
+              <Link to={`/sites/${shop.site_id}`} className="text-primary">
+                📍 {siteName}
+              </Link>
+            ) : (
+              "No site linked"
+            )}
+            {shop.phone ? ` · ${shop.phone}` : ""}
           </div>
-        </div>
-        <div>
-          <div className="text-xs text-muted">Paid</div>
-          <div className="font-semibold text-red">{formatPaise(figures?.paidPaise ?? 0)}</div>
-        </div>
-        <div>
-          <div className="text-xs text-muted">Holding</div>
-          <div className={cn("font-semibold", pending > 0 && "text-amber")}>
-            {formatPaise(pending)}
-          </div>
-        </div>
-      </div>
 
-      {form ? (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            add.mutate();
-          }}
-          className="space-y-2 border-t border-border pt-3"
-        >
-          <div className="text-sm font-semibold">
-            {form.type === "shop_in" ? "Money received (to hold)" : "Pay shop"}
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div>
+              <div className="text-xs text-muted">Received</div>
+              <div className="font-semibold text-green">
+                {formatPaise(figures?.receivedPaise ?? 0)}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-muted">Paid</div>
+              <div className="font-semibold text-red">
+                {formatPaise(figures?.paidPaise ?? 0)}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-muted">Holding</div>
+              <div className={cn("font-semibold", pending > 0 && "text-amber")}>
+                {formatPaise(pending)}
+              </div>
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <Input
-              placeholder="Amount ₹ *"
-              inputMode="decimal"
-              value={form.amount}
-              onChange={(e) => setForm({ ...form, amount: e.target.value })}
-              required
-            />
-            <Input
-              type="date"
-              value={form.date}
-              onChange={(e) => setForm({ ...form, date: e.target.value })}
-            />
+
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-sm font-semibold">Transactions</div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="soft"
+                disabled={entries.length === 0}
+                onClick={sharePdf}
+              >
+                📄 PDF
+              </Button>
+              <Button
+                size="sm"
+                variant="soft"
+                disabled={entries.length === 0}
+                onClick={shareExcel}
+              >
+                📊 Excel
+              </Button>
+            </div>
           </div>
-          <ModeToggle mode={form.mode} onChange={(mode) => setForm({ ...form, mode })} />
-          <Input
-            placeholder="Note (optional)"
-            value={form.note}
-            onChange={(e) => setForm({ ...form, note: e.target.value })}
-          />
-          {err && <p className="text-sm text-red">{err}</p>}
-          <div className="flex gap-2">
-            <Button type="submit" size="sm" disabled={add.isPending}>
-              Save
-            </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setForm(null)}>
-              Cancel
-            </Button>
-          </div>
-        </form>
-      ) : (
-        <div className="flex gap-2 border-t border-border pt-3">
-          <Button size="sm" variant="soft" onClick={() => open("shop_in")}>
-            ＋ Received
-          </Button>
-          <Button size="sm" variant="soft" onClick={() => open("shop_out")}>
-            → Pay shop
-          </Button>
+          <DateRangeFilter range={range} onChange={setRange} />
+
+          {entries.length === 0 ? (
+            <p className="text-sm text-muted">No transactions in this period.</p>
+          ) : (
+            <div className="divide-y divide-border">
+              {entries.map((e) => (
+                <div key={e.txn.id} className="flex items-center gap-2 py-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">{formatDate(e.txn.txn_date)}</span>
+                      <ModeTag mode={e.txn.mode} />
+                    </div>
+                    {e.txn.note && (
+                      <div className="truncate text-xs text-muted">{e.txn.note}</div>
+                    )}
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div
+                      className={cn(
+                        "font-semibold tabular-nums",
+                        e.direction === "in" ? "text-green" : "text-red",
+                      )}
+                    >
+                      {e.direction === "in" ? "+" : "−"} {formatPaise(e.txn.amount_paise)}
+                    </div>
+                    <div className="text-xs text-muted tabular-nums">
+                      {formatPaise(e.holdingAfterPaise)}
+                    </div>
+                  </div>
+                  <button
+                    className="text-red"
+                    aria-label="Delete transaction"
+                    onClick={() => {
+                      if (confirm("Delete this transaction? It will vanish from all totals."))
+                        removeTxn.mutate(e.txn.id);
+                    }}
+                  >
+                    🗑
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {ledger && (
+            <div className="space-y-1 border-t border-border pt-2 text-sm">
+              {range.from && (
+                <div className="flex items-center justify-between text-muted">
+                  <span>Opening holding</span>
+                  <span className="tabular-nums">
+                    {formatPaise(ledger.openingHoldingPaise)}
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center justify-between text-muted">
+                <span>Received / paid this period</span>
+                <span className="tabular-nums">
+                  <span className="text-green">
+                    {formatPaise(ledger.periodReceivedPaise)}
+                  </span>{" "}
+                  /{" "}
+                  <span className="text-red">{formatPaise(ledger.periodPaidPaise)}</span>
+                </span>
+              </div>
+              <div className="flex items-center justify-between font-semibold">
+                <span>Holding</span>
+                <span className={cn("tabular-nums", pending > 0 && "text-amber")}>
+                  {formatPaise(ledger.closingHoldingPaise)}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {form ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                add.mutate();
+              }}
+              className="space-y-2 border-t border-border pt-3"
+            >
+              <div className="text-sm font-semibold">
+                {form.type === "shop_in" ? "Money received (to hold)" : "Pay shop"}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  placeholder="Amount ₹ *"
+                  inputMode="decimal"
+                  value={form.amount}
+                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                  required
+                />
+                <Input
+                  type="date"
+                  value={form.date}
+                  onChange={(e) => setForm({ ...form, date: e.target.value })}
+                />
+              </div>
+              <ModeToggle mode={form.mode} onChange={(mode) => setForm({ ...form, mode })} />
+              <Input
+                placeholder="Note (optional)"
+                value={form.note}
+                onChange={(e) => setForm({ ...form, note: e.target.value })}
+              />
+              {err && <p className="text-sm text-red">{err}</p>}
+              <div className="flex gap-2">
+                <Button type="submit" size="sm" disabled={add.isPending}>
+                  Save
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setForm(null)}>
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <div className="flex gap-2 border-t border-border pt-3">
+              <Button size="sm" variant="soft" onClick={() => openForm("shop_in")}>
+                ＋ Received
+              </Button>
+              <Button size="sm" variant="soft" onClick={() => openForm("shop_out")}>
+                → Pay shop
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </Card>

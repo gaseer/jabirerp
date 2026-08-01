@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { resetLocalDataIfIdentityChanged } from "@/lib/db";
+import { workerCredential } from "@/lib/workerAuth";
 
 interface AuthState {
   session: Session | null;
@@ -9,6 +11,7 @@ interface AuthState {
   init: () => Promise<void>;
   signUp: (email: string, password: string) => Promise<{ needsConfirmation: boolean }>;
   signIn: (email: string, password: string) => Promise<void>;
+  signInOrClaimWorker: (name: string, phone: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -60,11 +63,16 @@ export const useAuth = create<AuthState>((set) => ({
     if (session?.user) cacheUser(session.user);
     // No session + offline: keep the last known user so local data stays visible.
     const user = session?.user ?? (offline() ? cachedUser() : null);
+    // Two identities (owner + worker, or an account switch) must never share
+    // one browser's IndexedDB — DexieRepo.getAll() doesn't scope by identity,
+    // it trusts exactly one signed-in identity per device. Wipe local data
+    // BEFORE the store update fires any queries if the identity changed.
+    if (user) await resetLocalDataIfIdentityChanged(user.id);
     set({ session, user, loading: false });
 
     if (!listenerRegistered) {
       listenerRegistered = true;
-      supabase.auth.onAuthStateChange((event, s) => {
+      supabase.auth.onAuthStateChange(async (event, s) => {
         if (event === "SIGNED_OUT") {
           cacheUser(null);
           set({ session: null, user: null });
@@ -74,7 +82,9 @@ export const useAuth = create<AuthState>((set) => ({
         // is still "signed in" locally until they explicitly sign out.
         if (!s && offline()) return;
         if (s?.user) cacheUser(s.user);
-        set({ session: s, user: s?.user ?? (offline() ? cachedUser() : null) });
+        const nextUser = s?.user ?? (offline() ? cachedUser() : null);
+        if (nextUser) await resetLocalDataIfIdentityChanged(nextUser.id);
+        set({ session: s, user: nextUser });
       });
     }
   },
@@ -114,6 +124,61 @@ export const useAuth = create<AuthState>((set) => ({
     }
   },
 
+  /**
+   * One flow for both first-time activation and every login after: the
+   * credential is derived deterministically from the phone number alone (see
+   * workerCredential), so "sign in" and "sign up" are indistinguishable from
+   * the worker's point of view — they always just type name + phone.
+   */
+  signInOrClaimWorker: async (name, phone) => {
+    const trimmedName = name.trim();
+    if (!trimmedName || !phone.trim()) throw new Error("Enter your name and phone number");
+    const { email, password } = workerCredential(phone);
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    if (signInError) {
+      if (!/invalid login credentials/i.test(signInError.message)) throw signInError;
+      const { error: signUpError } = await supabase.auth.signUp({ email, password });
+      if (signUpError) throw signUpError;
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const user = sessionData.session?.user;
+    if (!user) {
+      throw new Error(
+        !navigator.onLine
+          ? "No internet connection. Connect and try again."
+          : "Could not sign in. Try again.",
+      );
+    }
+
+    const metadata = user.user_metadata as { employee_id?: string };
+    if (!metadata.employee_id) {
+      const { data, error } = await supabase.rpc("claim_employee", {
+        p_name: trimmedName,
+        p_phone: phone,
+      });
+      const claim = data?.[0] as { employee_id: string; owner_id: string } | undefined;
+      if (error || !claim) {
+        await supabase.auth.signOut();
+        cacheUser(null);
+        set({ session: null, user: null });
+        throw new Error(
+          "No matching worker found. Ask your contractor to check your name and phone, or add you as a worker first.",
+        );
+      }
+      const { error: updateError } = await supabase.auth.updateUser({
+        data: {
+          role: "worker",
+          employee_id: claim.employee_id,
+          owner_id: claim.owner_id,
+          display_name: trimmedName,
+        },
+      });
+      if (updateError) throw updateError;
+    }
+  },
+
   signOut: async () => {
     try {
       await supabase.auth.signOut();
@@ -125,5 +190,24 @@ export const useAuth = create<AuthState>((set) => ({
   },
 }));
 
-/** Owner id for Repo writes. Empty string when logged out (writes shouldn't happen then). */
-export const currentOwnerId = () => useAuth.getState().user?.id ?? "";
+/**
+ * Owner id for Repo writes. Empty string when logged out (writes shouldn't
+ * happen then). For a worker session this is the CONTRACTOR's id, not the
+ * worker's own auth uid — every row a worker writes (their attendance) must
+ * be stamped with the tenant it belongs to, matching what the
+ * attendance_worker_insert RLS policy checks. This is the single choke point
+ * threaded into every DexieRepo and into SupabaseSync.push()'s cross-account
+ * guard, so branching it here is enough to make both role-aware.
+ */
+export const currentOwnerId = () => {
+  const user = useAuth.getState().user;
+  if (!user) return "";
+  const metadata = (user.user_metadata ?? {}) as { role?: string; owner_id?: string };
+  return metadata.role === "worker" && metadata.owner_id ? metadata.owner_id : user.id;
+};
+
+/** True when the signed-in identity is a worker (vs the owner/contractor). */
+export const isWorkerSession = () => {
+  const user = useAuth.getState().user;
+  return ((user?.user_metadata ?? {}) as { role?: string }).role === "worker";
+};

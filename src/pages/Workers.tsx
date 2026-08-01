@@ -118,6 +118,33 @@ export function Workers() {
     onSuccess: refresh,
   });
 
+  const resetLogin = useMutation({
+    mutationFn: async (w: EmployeeRow) => {
+      // Explicit null clears self-service access; every other edit path
+      // OMITS auth_user_id entirely so DexieRepo.put()'s merge-over-existing
+      // preserves whatever the claim_employee RPC last set.
+      await employeeRepo.put({
+        id: w.id,
+        name: w.name,
+        phone: w.phone,
+        role: w.role,
+        hourly_wage_paise: w.hourly_wage_paise,
+        auth_user_id: null,
+      });
+      sync.sync().catch(() => {});
+    },
+    onSuccess: refresh,
+  });
+
+  function confirmResetLogin(w: EmployeeRow) {
+    if (
+      confirm(
+        `Reset ${w.name}'s login? They'll need to activate again with their name + phone (e.g. after losing their phone).`,
+      )
+    )
+      resetLogin.mutate(w);
+  }
+
   function submit(e: FormEvent) {
     e.preventDefault();
     if (!form || !form.name.trim()) return;
@@ -331,35 +358,50 @@ export function Workers() {
           {visible.map((w) => {
             const bal = balances[w.id] ?? 0;
             return (
-              <Card key={w.id} className="flex items-center justify-between gap-3">
-                <button
-                  className="min-w-0 flex-1 text-left"
-                  onClick={() => navigate(`/workers/${w.id}`)}
-                >
-                  <div className="truncate font-semibold">{w.name}</div>
-                  <div className="truncate text-sm text-muted">
-                    {w.role} · {formatPaise(w.hourly_wage_paise)}/hr
-                    {w.phone ? ` · ${w.phone}` : ""}
+              <Card key={w.id} className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    className="min-w-0 flex-1 text-left"
+                    onClick={() => navigate(`/workers/${w.id}`)}
+                  >
+                    <div className="truncate font-semibold">{w.name}</div>
+                    <div className="truncate text-sm text-muted">
+                      {w.role} · {formatPaise(w.hourly_wage_paise)}/hr
+                      {w.phone ? ` · ${w.phone}` : ""}
+                    </div>
+                  </button>
+                  <div className="text-right">
+                    <div className={cn("font-semibold", bal > 0 ? "text-amber" : "text-green")}>
+                      {formatPaise(Math.abs(bal))}
+                    </div>
+                    <div className="text-[11px] text-muted">
+                      {bal > 0 ? "payable" : bal < 0 ? "advance given" : "settled"}
+                    </div>
                   </div>
-                </button>
-                <div className="text-right">
-                  <div className={cn("font-semibold", bal > 0 ? "text-amber" : "text-green")}>
-                    {formatPaise(Math.abs(bal))}
-                  </div>
-                  <div className="text-[11px] text-muted">
-                    {bal > 0 ? "payable" : bal < 0 ? "advance given" : "settled"}
-                  </div>
+                  <button className="text-muted" aria-label="Edit worker" onClick={() => edit(w)}>
+                    ✎
+                  </button>
+                  <button
+                    className="text-red"
+                    aria-label="Delete worker"
+                    onClick={() => confirmDelete(w)}
+                  >
+                    🗑
+                  </button>
                 </div>
-                <button className="text-muted" aria-label="Edit worker" onClick={() => edit(w)}>
-                  ✎
-                </button>
-                <button
-                  className="text-red"
-                  aria-label="Delete worker"
-                  onClick={() => confirmDelete(w)}
-                >
-                  🗑
-                </button>
+                <div className="flex items-center justify-between border-t border-border pt-2 text-xs">
+                  <span className={w.auth_user_id ? "text-green" : "text-muted"}>
+                    {w.auth_user_id ? "🔗 Worker login activated" : "Worker login not activated"}
+                  </span>
+                  {w.auth_user_id && (
+                    <button
+                      className="text-primary hover:underline"
+                      onClick={() => confirmResetLogin(w)}
+                    >
+                      Reset login
+                    </button>
+                  )}
+                </div>
               </Card>
             );
           })}

@@ -1,9 +1,11 @@
 import { useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { useAuth } from "@/store/auth";
+import { isWorkerSession, useAuth } from "@/store/auth";
 import { profileRepo } from "@/repo/repos";
 import { AppShell } from "@/components/AppShell";
-import { Login } from "@/pages/Login";
+import { WorkerShell } from "@/components/WorkerShell";
+import { AuthGate } from "@/pages/AuthGate";
+import { WorkerHome } from "@/pages/worker/WorkerHome";
 import { Dashboard } from "@/pages/Dashboard";
 import { Sites } from "@/pages/Sites";
 import { SiteDetail } from "@/pages/SiteDetail";
@@ -24,9 +26,11 @@ export default function App() {
 
   // On login, mirror the auth user into the local profiles store via the Repo —
   // but only when it actually changed: an unconditional put would dirty and
-  // enqueue a profile push on every app launch.
+  // enqueue a profile push on every app launch. A worker session's owner_id
+  // (via currentOwnerId) is the CONTRACTOR's id, not this auth uid, so a
+  // profiles write here would always fail RLS — skip it for workers.
   useEffect(() => {
-    if (!user) return;
+    if (!user || isWorkerSession()) return;
     const display_name =
       (user.user_metadata?.display_name as string | undefined) ?? null;
     profileRepo.getById(user.id).then((existing) => {
@@ -44,7 +48,15 @@ export default function App() {
     );
   }
 
-  if (!user) return <Login />;
+  if (!user) return <AuthGate />;
+
+  if (isWorkerSession()) {
+    return (
+      <WorkerShell>
+        <WorkerHome />
+      </WorkerShell>
+    );
+  }
 
   return (
     <BrowserRouter>

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { attendanceRepo, employeeRepo, transactionRepo } from "@/repo/repos";
 import { useAuth } from "@/store/auth";
-import { markAttendance } from "./attendance";
+import { markAttendance, markSelfAttendance } from "./attendance";
 import { addWorkerPayment } from "./transactions";
 import { buildSettlement, empBalancePaise } from "./settlement";
 
@@ -108,5 +108,34 @@ describe("buildSettlement", () => {
     await day("2026-07-01");
     await pay("2026-07-02", 100000);
     expect(await empBalancePaise(EMP)).toBe(-20000);
+  });
+
+  it("pending/rejected worker-submitted shifts never count toward wages", async () => {
+    await day("2026-07-01"); // approved, 80000
+    const pending = await markSelfAttendance({
+      employeeId: EMP,
+      siteId: "site-1",
+      workDate: "2026-07-02",
+      startTime: "09:00",
+      endTime: "17:00",
+    });
+    void pending;
+
+    const s = await buildSettlement(EMP, { from: "2026-07-01", to: "2026-07-31" });
+    expect(s.periodWagesPaise).toBe(80000); // only the approved shift
+  });
+
+  it("a pending shift before the range doesn't inflate the opening balance", async () => {
+    await markSelfAttendance({
+      employeeId: EMP,
+      siteId: "site-1",
+      workDate: "2026-06-10",
+      startTime: "09:00",
+      endTime: "17:00",
+    });
+    await day("2026-07-01");
+
+    const s = await buildSettlement(EMP, { from: "2026-07-01", to: "2026-07-31" });
+    expect(s.openingBalancePaise).toBe(0);
   });
 });

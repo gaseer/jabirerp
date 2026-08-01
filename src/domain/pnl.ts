@@ -51,7 +51,7 @@ export async function sitePnl(siteId: string): Promise<SitePnl> {
     siteBillTotalPaise(siteId),
     listTxns({ siteId, types: ["customer_advance"] }),
     listTxns({ siteId, types: ["site_expense"] }),
-    listAttendance({ siteId }),
+    listAttendance({ siteId, status: "approved" }),
   ]);
   const advancesPaise = sumPaise(advances);
   const expensesPaise = sumPaise(expenses);

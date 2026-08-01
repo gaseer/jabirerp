@@ -1,10 +1,16 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { EmployeeRow, TxnMode } from "@/lib/db";
+import type { AttendanceStatus, EmployeeRow, TxnMode } from "@/lib/db";
 import { attendanceRepo, employeeRepo, siteRepo, transactionRepo } from "@/repo/repos";
 import { sync } from "@/repo/SupabaseSync";
-import { editAttendance, listAttendance, markAttendance } from "@/domain/attendance";
+import {
+  approveAttendance,
+  editAttendance,
+  listAttendance,
+  markAttendance,
+  rejectAttendance,
+} from "@/domain/attendance";
 import { addWorkerPayment, listTxns, sumPaise } from "@/domain/transactions";
 import { buildSettlement } from "@/domain/settlement";
 import {
@@ -33,6 +39,21 @@ import type { GridColumn, GridRow } from "@/components/grid/SheetGrid";
 import { cn } from "@/lib/utils";
 
 const pushSoon = () => sync.sync().catch(() => {});
+
+/** Approved shifts show no pill (the common case) — pending/rejected stand out. */
+function AttendanceStatusPill({ status }: { status: AttendanceStatus }) {
+  if (status === "approved") return null;
+  return (
+    <span
+      className={cn(
+        "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",
+        status === "pending" ? "bg-amber-soft text-amber" : "bg-red-soft text-red",
+      )}
+    >
+      {status === "pending" ? "Pending approval" : "Rejected"}
+    </span>
+  );
+}
 
 const TABS = [
   { key: "attendance", label: "Attendance" },
@@ -171,6 +192,22 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
       if (editingId === rowId) cancelEdit(); // don't leave the form editing a deleted row
       refresh();
     },
+  });
+
+  const approve = useMutation({
+    mutationFn: async (rowId: string) => {
+      await approveAttendance(rowId);
+      pushSoon();
+    },
+    onSuccess: refresh,
+  });
+
+  const reject = useMutation({
+    mutationFn: async (rowId: string) => {
+      await rejectAttendance(rowId);
+      pushSoon();
+    },
+    onSuccess: refresh,
   });
 
   // Duplicate guard: surface existing entries for the chosen date. The entry
@@ -362,8 +399,11 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
                 )}
               >
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium">
-                    {formatDate(r.work_date)} · {hoursLabel(r.hours)}
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <span>
+                      {formatDate(r.work_date)} · {hoursLabel(r.hours)}
+                    </span>
+                    <AttendanceStatusPill status={r.status} />
                   </div>
                   <div className="truncate text-xs text-muted">
                     {timeRangeLabel(r.start_time, r.end_time)} ·{" "}
@@ -371,6 +411,24 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
                   </div>
                 </div>
                 <div className="font-semibold">{formatPaise(r.wage_paise)}</div>
+                {r.status === "pending" && (
+                  <>
+                    <button
+                      className="text-green"
+                      aria-label="Approve attendance"
+                      onClick={() => approve.mutate(r.id)}
+                    >
+                      ✓
+                    </button>
+                    <button
+                      className="text-red"
+                      aria-label="Reject attendance"
+                      onClick={() => reject.mutate(r.id)}
+                    >
+                      ✕
+                    </button>
+                  </>
+                )}
                 <button
                   className="text-primary"
                   aria-label="Edit attendance"
@@ -392,8 +450,12 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
           </div>
         )}
         <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
-          <span>Wages (period)</span>
-          <span>{formatPaise(rows.reduce((s, r) => s + r.wage_paise, 0))}</span>
+          <span>Wages (period, approved only)</span>
+          <span>
+            {formatPaise(
+              rows.filter((r) => r.status === "approved").reduce((s, r) => s + r.wage_paise, 0),
+            )}
+          </span>
         </div>
       </Card>
     </div>

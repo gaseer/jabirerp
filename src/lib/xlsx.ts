@@ -1,6 +1,7 @@
 import type {
   SiteRow,
   EmployeeRow,
+  ShopRow,
   TransactionRow,
   LineItemRow,
   DocKind,
@@ -11,6 +12,7 @@ import { formatDate, rangeLabel, todayIso, type DateRange } from "@/lib/dates";
 import { shareOrDownloadBlob, slugFilename } from "@/lib/pdf";
 import { BRAND_NAME, BRAND_SUBTITLE } from "@/lib/brand";
 import type { Settlement } from "@/domain/settlement";
+import type { ShopLedger } from "@/domain/shops";
 import { sumPaise } from "@/domain/transactions";
 import { documentTotalPaise } from "@/domain/quotation";
 import { groupSections, invoiceTotals, isUnsectioned } from "@/domain/invoice";
@@ -245,6 +247,52 @@ export async function shareAdvanceStatementXlsx(
     ],
     summary,
     filename: slugFilename("advance-statement", site.name, "xlsx"),
+  });
+}
+
+/** Shop statement — every received/paid txn with the running holding. */
+export async function shareShopStatementXlsx(
+  shop: ShopRow,
+  ledger: ShopLedger,
+  range: DateRange,
+  siteName?: string,
+): Promise<void> {
+  const summary: XlsxSpec["summary"] = [];
+  if (range.from)
+    summary.push({ k: "Opening holding", v: paiseToRupees(ledger.openingHoldingPaise) });
+  summary.push(
+    { k: "Received this period", v: paiseToRupees(ledger.periodReceivedPaise) },
+    { k: "Paid this period", v: paiseToRupees(ledger.periodPaidPaise) },
+    {
+      k: "Holding (still to pay the shop)",
+      v: paiseToRupees(ledger.closingHoldingPaise),
+    },
+  );
+
+  await renderStatementXlsx({
+    sheetName: "Shop",
+    title: "SHOP STATEMENT",
+    partyName: shop.name,
+    partySub: [siteName, shop.phone].filter(Boolean).join("  ·  ") || undefined,
+    periodLabel: rangeLabel(range),
+    sections: [
+      {
+        heading: "Transactions",
+        head: ["#", "Date", "Type", "Mode", "Note", "Amount", "Holding"],
+        rows: ledger.entries.map((e, i) => [
+          String(i + 1),
+          formatDate(e.txn.txn_date),
+          e.direction === "in" ? "Received" : "Paid",
+          e.txn.mode === "bank" ? "Bank" : "Cash",
+          e.txn.note ?? "",
+          paiseToRupees(e.txn.amount_paise),
+          paiseToRupees(e.holdingAfterPaise),
+        ]),
+        foot: ["", "", "", "", "", "Closing holding", paiseToRupees(ledger.closingHoldingPaise)],
+      },
+    ],
+    summary,
+    filename: slugFilename("shop-statement", shop.name, "xlsx"),
   });
 }
 

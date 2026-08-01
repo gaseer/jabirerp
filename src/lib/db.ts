@@ -93,7 +93,21 @@ export interface EmployeeRow extends BaseEntity {
   phone: string | null;
   role: EmployeeRole;
   hourly_wage_paise: number;
+  // Set once by the claim_employee RPC when the worker activates self-service
+  // login — never written by the client. Optional (not just nullable) so
+  // every existing employeeRepo.put() call site (admin create/edit) can omit
+  // it entirely; DexieRepo.put()'s merge-over-existing then leaves an
+  // already-claimed row's id untouched instead of overwriting it with null.
+  // undefined/null both mean "not activated yet".
+  auth_user_id?: string | null;
 }
+
+/**
+ * pending = worker self-marked, not yet reviewed; approved = counts in wages/
+ * settlement/P&L; rejected = excluded permanently. Admin-marked attendance is
+ * always "approved" immediately (no self-approval loop for trusted entries).
+ */
+export type AttendanceStatus = "pending" | "approved" | "rejected";
 
 /**
  * One worked shift: from/to clock times on a date. hours is derived from the
@@ -109,6 +123,7 @@ export interface AttendanceRow extends BaseEntity {
   end_time: string; // "HH:MM", must be after start_time (no overnight shifts)
   hours: number; // (end − start) in hours, may be fractional (e.g. 4.5)
   wage_paise: number;
+  status: AttendanceStatus;
 }
 
 /** A shop the contractor routes customer money through (pass-through dues). */
@@ -132,6 +147,17 @@ export interface MetaRow {
 }
 
 /**
+ * Local-only, unsynced cache of site NAMES a worker may mark attendance
+ * against (populated from the worker_site_names RPC whenever online, read
+ * from directly so marking attendance works offline too). Never appears in
+ * SYNC_TABLES — it is not a BaseEntity, has no owner_id, and is never pushed.
+ */
+export interface WorkerSiteCacheRow {
+  id: string;
+  name: string;
+}
+
+/**
  * Dexie is the LOCAL SOURCE OF TRUTH. Every synced table is mirrored here.
  * The `outbox` holds writes queued for push to Supabase; `meta` holds sync
  * cursors (last-seen updated_at per table).
@@ -148,6 +174,7 @@ export class PowerPlusDB extends Dexie {
   site_tasks!: Table<SiteTaskRow, string>;
   outbox!: Table<OutboxItem, string>;
   meta!: Table<MetaRow, string>;
+  worker_site_cache!: Table<WorkerSiteCacheRow, string>;
 
   constructor() {
     super("powerplus");
@@ -244,6 +271,28 @@ export class PowerPlusDB extends Dexie {
           i.unit ??= null;
         });
     });
+    // v10: worker self-service login. employees gain auth_user_id (backfilled
+    // null = not activated); attendance gains status (backfilled "approved"
+    // so existing history keeps counting exactly as before). worker_site_cache
+    // is new and local-only — a plain `.stores()` addition needs no upgrade.
+    this.version(10)
+      .stores({
+        worker_site_cache: "id",
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table("employees")
+          .toCollection()
+          .modify((e: Record<string, unknown>) => {
+            e.auth_user_id ??= null;
+          });
+        await tx
+          .table("attendance")
+          .toCollection()
+          .modify((a: Record<string, unknown>) => {
+            a.status ??= "approved";
+          });
+      });
   }
 }
 
@@ -255,4 +304,55 @@ export async function getMeta(key: string): Promise<string | undefined> {
 
 export async function setMeta(key: string, value: string): Promise<void> {
   await db.meta.put({ key, value });
+}
+
+const LAST_AUTH_UID_KEY = "last-auth-uid";
+
+/**
+ * Defensive isolation: DexieRepo.getAll() doesn't scope by identity (there's
+ * only ever meant to be one signed-in identity per browser). If the signed-in
+ * user changes — an owner and a worker sharing a device, or a plain account
+ * switch — wipe every synced table + the outbox + sync cursors so the new
+ * identity's next pull starts from a clean slate instead of seeing (or
+ * silently pushing under) the previous identity's rows.
+ */
+export async function resetLocalDataIfIdentityChanged(userId: string): Promise<void> {
+  const last = await getMeta(LAST_AUTH_UID_KEY);
+  if (last === userId) return;
+  if (last !== undefined) {
+    await db.transaction(
+      "rw",
+      [
+        db.profiles,
+        db.sites,
+        db.documents,
+        db.line_items,
+        db.transactions,
+        db.employees,
+        db.attendance,
+        db.shops,
+        db.site_tasks,
+        db.outbox,
+        db.meta,
+        db.worker_site_cache,
+      ],
+      async () => {
+        await Promise.all([
+          db.profiles.clear(),
+          db.sites.clear(),
+          db.documents.clear(),
+          db.line_items.clear(),
+          db.transactions.clear(),
+          db.employees.clear(),
+          db.attendance.clear(),
+          db.shops.clear(),
+          db.site_tasks.clear(),
+          db.outbox.clear(),
+          db.meta.clear(),
+          db.worker_site_cache.clear(),
+        ]);
+      },
+    );
+  }
+  await setMeta(LAST_AUTH_UID_KEY, userId);
 }

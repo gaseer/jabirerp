@@ -100,16 +100,18 @@ export function WorkersTab({ site }: { site: SiteRow }) {
     setForm(BLANK_SHIFT);
   }
 
-  // Per-worker rollup for this site.
+  // Per-worker rollup for this site — pending/rejected shifts show in the
+  // list below (with a status pill) but don't count as a wage cost yet.
+  const approved = attendance.filter((a) => a.status === "approved");
   const byWorker = new Map<string, { hours: number; wagesPaise: number }>();
-  for (const a of attendance) {
+  for (const a of approved) {
     const agg = byWorker.get(a.employee_id) ?? { hours: 0, wagesPaise: 0 };
     agg.hours += a.hours;
     agg.wagesPaise += a.wage_paise;
     byWorker.set(a.employee_id, agg);
   }
   const empName = new Map(employees.map((e) => [e.id, e.name]));
-  const totalWages = attendance.reduce((s, a) => s + a.wage_paise, 0);
+  const totalWages = approved.reduce((s, a) => s + a.wage_paise, 0);
 
   // The entry being edited is not a duplicate of itself → never hint about it.
   const otherSameDay = sameDay.filter((r) => r.id !== editingId);
@@ -345,8 +347,22 @@ export function WorkersTab({ site }: { site: SiteRow }) {
                 )}
               >
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium">
-                    {empName.get(r.employee_id) ?? "Unknown"} · {hoursLabel(r.hours)}
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <span>
+                      {empName.get(r.employee_id) ?? "Unknown"} · {hoursLabel(r.hours)}
+                    </span>
+                    {r.status !== "approved" && (
+                      <span
+                        className={cn(
+                          "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",
+                          r.status === "pending"
+                            ? "bg-amber-soft text-amber"
+                            : "bg-red-soft text-red",
+                        )}
+                      >
+                        {r.status === "pending" ? "Pending approval" : "Rejected"}
+                      </span>
+                    )}
                   </div>
                   <div className="truncate text-xs text-muted">
                     {formatDate(r.work_date)} ·{" "}
