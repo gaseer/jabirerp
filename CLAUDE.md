@@ -41,7 +41,7 @@ Supabase credentials come from `.env` (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_
 
 **Single `transactions` table** holds all money movement, typed `customer_advance | site_expense | worker_payment | shop_in | shop_out`. Direction (`in`/`out`) is derived from type (`txnDirection`), never stored. Worker and shop transactions carry **no** `site_id`. Shops are pass-through accounts — they never enter P&L.
 
-**Wages** — hourly model: `employees.hourly_wage_paise`; attendance stores a from/to shift as zero-padded `"HH:MM"` 24h text (lexical order = time order, no overnight shifts) plus `hours` and a `wage_paise` snapshot computed once at write time. Historical wage rows are never recomputed when the hourly rate changes.
+**Wages** — hourly model: `employees.hourly_wage_paise`; attendance stores a from/to shift as zero-padded `"HH:MM"` 24h text, plus `hours` and a `wage_paise` snapshot computed once at write time. `hoursBetween` (`src/domain/wages.ts`) wraps past midnight when `end < start`, so overnight shifts are allowed and stored under the start date; equal start/end stays a rejected zero-length shift. Historical wage rows are never recomputed when the hourly rate changes.
 
 ## Invariants
 

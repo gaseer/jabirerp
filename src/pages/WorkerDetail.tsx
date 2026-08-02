@@ -22,7 +22,8 @@ import {
 } from "@/domain/wages";
 import { shareSettlementPdf } from "@/lib/statementPdf";
 import { shareSettlementXlsx } from "@/lib/xlsx";
-import { formatPaise, toPaise } from "@/lib/money";
+import { formatPaise, paiseToRupees, toPaise } from "@/lib/money";
+import { WageRoundEditor } from "@/components/WageRoundEditor";
 import { formatDate, todayIso, type DateRange } from "@/lib/dates";
 import { useEntryMode } from "@/store/settings";
 import { Card } from "@/components/ui/card";
@@ -129,6 +130,11 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
   // Non-null = the form is editing that existing entry instead of adding one.
   const [editingId, setEditingId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  // Wage round-off override for the add/edit form; "" = use the computed wage.
+  const [wageOverride, setWageOverride] = useState("");
+  // Non-null = the approve modal is open for that pending row.
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [approveWageOverride, setApproveWageOverride] = useState("");
 
   const { data: sites = [] } = useQuery({
     queryKey: ["sites"],
@@ -155,12 +161,16 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
         startTime: form.start,
         endTime: form.end,
       };
-      return editingId ? editAttendance(editingId, input) : markAttendance(input);
+      const override = wageOverride.trim() ? toPaise(wageOverride) : undefined;
+      return editingId
+        ? editAttendance(editingId, input, override)
+        : markAttendance(input, override);
     },
     onSuccess: () => {
       pushSoon();
       setErr(null);
       if (editingId) cancelEdit();
+      else setWageOverride("");
       refresh();
     },
     onError: (e) => setErr(e instanceof Error ? e.message : "Could not save"),
@@ -175,12 +185,16 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
       start: row.start_time,
       end: row.end_time,
     });
+    // Pre-fill with the currently stored wage so an unrelated edit (e.g. date)
+    // doesn't silently discard a rounding the contractor already applied.
+    setWageOverride(String(paiseToRupees(row.wage_paise)));
   }
 
   function cancelEdit() {
     setEditingId(null);
     setErr(null);
     setForm(BLANK_SHIFT);
+    setWageOverride("");
   }
 
   const remove = useMutation({
@@ -195,11 +209,15 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
   });
 
   const approve = useMutation({
-    mutationFn: async (rowId: string) => {
-      await approveAttendance(rowId);
+    mutationFn: async ({ id, override }: { id: string; override?: number }) => {
+      await approveAttendance(id, override);
       pushSoon();
     },
-    onSuccess: refresh,
+    onSuccess: () => {
+      setApprovingId(null);
+      setApproveWageOverride("");
+      refresh();
+    },
   });
 
   const reject = useMutation({
@@ -270,13 +288,17 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
         </label>
       </div>
       {previewHours > 0 ? (
-        <p className="text-sm text-muted">
-          {hoursLabel(previewHours)} ×{" "}
-          {formatPaise(worker.hourly_wage_paise)}/hr ={" "}
-          <span className="font-semibold text-text">
+        <div className="space-y-1.5 rounded-sm bg-border/30 p-2">
+          <p className="text-xs text-muted">
+            {hoursLabel(previewHours)} × {formatPaise(worker.hourly_wage_paise)}/hr ={" "}
             {formatPaise(attendanceWagePaise(worker.hourly_wage_paise, previewHours))}
-          </span>
-        </p>
+          </p>
+          <WageRoundEditor
+            computedPaise={attendanceWagePaise(worker.hourly_wage_paise, previewHours)}
+            value={wageOverride}
+            onChange={setWageOverride}
+          />
+        </div>
       ) : (
         <p className="text-sm text-red">End time must be after start time.</p>
       )}
@@ -311,6 +333,12 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
     const h = hoursBetween(r.start, r.end);
     return h > 0 ? attendanceWagePaise(worker.hourly_wage_paise, h) : 0;
   };
+  // Blank/unparsable override -> fall back to the computed wage for that row.
+  const rowWageOverridePaise = (r: GridRow) => {
+    const raw = (r.wage ?? "").trim();
+    return raw ? toPaise(raw) : null;
+  };
+  const rowFinalWagePaise = (r: GridRow) => rowWageOverridePaise(r) ?? rowWagePaise(r);
   const attendanceColumns: GridColumn[] = [
     {
       key: "site",
@@ -322,21 +350,22 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
     { key: "date", label: "Date", type: "date" },
     { key: "start", label: "From", type: "time" },
     { key: "end", label: "To", type: "time" },
+    { key: "wage", label: "Round ₹ (optional)", type: "rupee", align: "right" },
   ];
   const attendanceGrid = (
     <EntryGrid
       columns={attendanceColumns}
-      blankRow={{ site: "", date: todayIso(), start: "09:00", end: "17:00" }}
+      blankRow={{ site: "", date: todayIso(), start: "09:00", end: "17:00", wage: "" }}
       isRowBlank={(r) => !r.site}
       computed={{
         label: "Wage",
         render: (r) => {
-          const p = rowWagePaise(r);
+          const p = rowFinalWagePaise(r);
           return p ? formatPaise(p) : "—";
         },
       }}
       footer={(rows) => (
-        <>Total wages: {formatPaise(rows.reduce((s, r) => s + rowWagePaise(r), 0))}</>
+        <>Total wages: {formatPaise(rows.reduce((s, r) => s + rowFinalWagePaise(r), 0))}</>
       )}
       saveLabel="Save attendance"
       commit={async (rows) => {
@@ -350,13 +379,16 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
             throw new Error("Every row needs From/To times with end after start");
         }
         for (const r of rows) {
-          await markAttendance({
-            employeeId: worker.id,
-            siteId: r.site,
-            workDate: r.date || todayIso(),
-            startTime: r.start,
-            endTime: r.end,
-          });
+          await markAttendance(
+            {
+              employeeId: worker.id,
+              siteId: r.site,
+              workDate: r.date || todayIso(),
+              startTime: r.start,
+              endTime: r.end,
+            },
+            rowWageOverridePaise(r) ?? undefined,
+          );
         }
         pushSoon();
       }}
@@ -381,6 +413,51 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
       )}
       <Modal open={editingId !== null} onClose={cancelEdit} title="Edit attendance">
         {editingId && shiftForm}
+      </Modal>
+
+      <Modal
+        open={approvingId !== null}
+        onClose={() => setApprovingId(null)}
+        title="Approve attendance"
+      >
+        {approvingId &&
+          (() => {
+            const row = rows.find((r) => r.id === approvingId);
+            if (!row) return null;
+            return (
+              <div className="space-y-3">
+                <p className="text-sm text-muted">
+                  {formatDate(row.work_date)} · {hoursLabel(row.hours)} ·{" "}
+                  {timeRangeLabel(row.start_time, row.end_time)} ·{" "}
+                  {siteName.get(row.site_id) ?? "Unknown site"}
+                </p>
+                <WageRoundEditor
+                  computedPaise={row.wage_paise}
+                  value={approveWageOverride}
+                  onChange={setApproveWageOverride}
+                />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    disabled={approve.isPending}
+                    onClick={() =>
+                      approve.mutate({
+                        id: row.id,
+                        override: approveWageOverride.trim()
+                          ? toPaise(approveWageOverride)
+                          : undefined,
+                      })
+                    }
+                  >
+                    ✓ Approve
+                  </Button>
+                  <Button size="sm" variant="soft" onClick={() => setApprovingId(null)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
       </Modal>
 
       <Card className="space-y-3">
@@ -416,7 +493,10 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
                     <button
                       className="text-green"
                       aria-label="Approve attendance"
-                      onClick={() => approve.mutate(r.id)}
+                      onClick={() => {
+                        setApprovingId(r.id);
+                        setApproveWageOverride("");
+                      }}
                     >
                       ✓
                     </button>

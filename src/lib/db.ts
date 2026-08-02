@@ -120,7 +120,7 @@ export interface AttendanceRow extends BaseEntity {
   site_id: string;
   work_date: string; // local calendar date, YYYY-MM-DD
   start_time: string; // "HH:MM" 24h, zero-padded
-  end_time: string; // "HH:MM", must be after start_time (no overnight shifts)
+  end_time: string; // "HH:MM"; may be before start_time for an overnight shift
   hours: number; // (end − start) in hours, may be fractional (e.g. 4.5)
   wage_paise: number;
   status: AttendanceStatus;

@@ -12,6 +12,7 @@ calling MVP done. Automated: `npm test` (138 tests) and `npm run build` both gre
   `GET /rest/v1/attendance?select=start_time&limit=1` both return 200 (they returned 400/42703 before).
 - [ ] After 0008: add a worker on one device → Sync → worker appears on a second device (this was the broken path). Existing un-pushed workers drain from the outbox on next sync.
 - [ ] **Apply `0010_worker_access.sql`** (Supabase SQL editor). Verify: `GET /rest/v1/employees?select=auth_user_id&limit=1` and `GET /rest/v1/attendance?select=status&limit=1` both return 200; `select proname from pg_proc where proname in ('claim_employee','worker_site_names')` lists both.
+- [ ] **Apply `0011_attendance_overnight_shifts.sql`** (Supabase SQL editor) — replaces the old `end_time > start_time` CHECK with `end_time <> start_time`, so overnight shifts (e.g. 17:00 → 03:00) sync instead of getting rejected by the outbox poison-pill guard. Verify: insert/edit an overnight attendance row locally, reconnect, confirm it pushes and pulls clean on a second device.
 - [x] `src/lib/brand.ts` holds every brand detail. `BRAND_PHONE` is set to **+91 90617 20700** (the number on the logo) and prints under the trading name on every PDF; `BRAND_EMAIL` / `BRAND_ADDRESS` are still `""` — set them there if they should print too (empty lines are skipped, never printed blank).
 
 ## 0.5 Offline hardening (added 2026-07-15 — verified in-browser)
@@ -33,7 +34,7 @@ calling MVP done. Automated: `npm test` (138 tests) and `npm run build` both gre
 ## 2. Poison-pill guard (each money form)
 
 - [ ] Amount `0`, negative, or blank → form shows an error, nothing saved, **outbox count unchanged** (check Dexie). This is the critical invariant: a CHECK-rejected row would wedge the whole outbox.
-- [ ] Attendance with end time ≤ start time, or malformed times → rejected client-side.
+- [ ] Attendance with end time = start time (zero-length), or malformed times → rejected client-side. End time BEFORE start time is now a valid overnight shift (e.g. 17:00 → 03:00 = 10h), not rejected.
 - [ ] Confirm in Supabase: no row ever arrives that violates the CHECKs (spot-check `transactions` rows have the right shape per type — e.g. `worker_payment` has NULL site_id/shop_id/category).
 
 ## 3. PDFs (3 shareable documents)
@@ -89,7 +90,7 @@ Every PDF shares one letterhead from `src/lib/brand.ts` — change the name or p
 ## 5. Wages & settlement math (HOURLY model)
 
 - [ ] Wage is ₹/hour; attendance = from/to time pickers. 1:00 PM–3:00 PM at ₹100/hr = ₹200; 12:30 PM–5:30 PM = 5h = ₹500. Form shows a live "hours × rate = wage" preview.
-- [ ] End time ≤ start time → inline error, submit disabled, nothing saved, nothing queued (poison-pill guard covers attendance too — server CHECK `end_time > start_time`).
+- [ ] End time = start time (zero-length) → inline error, submit disabled, nothing saved, nothing queued (poison-pill guard covers attendance too — server CHECK `end_time <> start_time`, migration `0011_attendance_overnight_shifts.sql`). End time BEFORE start time is now a valid overnight shift, not an error — e.g. mark 17:00 → 03:00, confirm it saves under the start date with hours = 10 and the correct wage.
 - [ ] Edit a worker's hourly wage → past attendance amounts UNCHANGED (snapshot at write); new attendance uses the new wage. UI notes this on the edit form.
 - [ ] Two NON-overlapping shifts same day (two sites) allowed; form shows the duplicate-day hint with each shift's time range.
 - [ ] Marking a shift that overlaps an existing one (same worker, same date — including an exact duplicate re-submit) → "Already marked …" error, nothing saved, nothing queued. Works from both the Worker detail form and the Site Workers tab.

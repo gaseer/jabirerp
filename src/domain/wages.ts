@@ -17,9 +17,14 @@ function toMinutes(t: string): number {
   return h * 60 + m;
 }
 
-/** Hours between two times on the same day; fractional (12:30→17:30 = 5). */
+/**
+ * Hours between two times on a shift starting at `start`; fractional
+ * (12:30→17:30 = 5). If `end` is earlier than `start` the shift crossed
+ * midnight (e.g. 17:00→03:00 = 10) — equal times stay 0, not 24.
+ */
 export function hoursBetween(start: string, end: string): number {
-  return (toMinutes(end) - toMinutes(start)) / 60;
+  const diff = toMinutes(end) - toMinutes(start);
+  return (diff < 0 ? diff + 1440 : diff) / 60;
 }
 
 /**
@@ -29,6 +34,23 @@ export function hoursBetween(start: string, end: string): number {
  */
 export function attendanceWagePaise(hourlyWagePaise: number, hours: number): number {
   return Math.round(hourlyWagePaise * hours);
+}
+
+/**
+ * Nearby round-number suggestions (nearest ₹50 and ₹100, both directions) for
+ * the contractor to round a computed wage to instead of typing it out — e.g.
+ * ₹922 -> [900, 950, 1000].
+ */
+export function roundWageCandidates(computedPaise: number): number[] {
+  if (computedPaise <= 0) return [];
+  const rupees = computedPaise / 100;
+  const set = new Set<number>();
+  for (const step of [50, 100]) {
+    set.add(Math.floor(rupees / step) * step);
+    set.add(Math.ceil(rupees / step) * step);
+  }
+  set.delete(rupees);
+  return [...set].filter((v) => v > 0).sort((a, b) => a - b);
 }
 
 /** Sum of stored per-entry wages. Rows must already be non-deleted. */

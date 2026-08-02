@@ -5,6 +5,7 @@ import {
   hoursBetween,
   hoursLabel,
   isValidTime,
+  roundWageCandidates,
   timeRangeLabel,
   wagesEarnedPaise,
 } from "./wages";
@@ -16,9 +17,10 @@ describe("hoursBetween", () => {
     expect(hoursBetween("09:00", "09:45")).toBe(0.75);
   });
 
-  it("inverted times give a non-positive result (rejected upstream)", () => {
-    expect(hoursBetween("15:00", "13:00")).toBe(-2);
-    expect(hoursBetween("10:00", "10:00")).toBe(0);
+  it("wraps past midnight for overnight shifts", () => {
+    expect(hoursBetween("15:00", "13:00")).toBe(22);
+    expect(hoursBetween("17:00", "03:00")).toBe(10);
+    expect(hoursBetween("10:00", "10:00")).toBe(0); // equal times: zero-length, not 24h
   });
 });
 
@@ -49,6 +51,23 @@ describe("attendanceWagePaise", () => {
   it("sums stored wages exactly — no re-rounding", () => {
     const rows = [{ wage_paise: 5833 }, { wage_paise: 45000 }, { wage_paise: 1 }];
     expect(wagesEarnedPaise(rows)).toBe(50834);
+  });
+});
+
+describe("roundWageCandidates", () => {
+  it("offers nearest ₹50/₹100 in both directions, as rupee amounts", () => {
+    expect(roundWageCandidates(92200)).toEqual([900, 950, 1000]); // ₹922
+    expect(roundWageCandidates(91200)).toEqual([900, 950, 1000]); // ₹912
+    expect(roundWageCandidates(102300)).toEqual([1000, 1050, 1100]); // ₹1023
+  });
+
+  it("drops a candidate equal to the exact computed value", () => {
+    expect(roundWageCandidates(90000)).not.toContain(900); // exactly ₹900 already
+  });
+
+  it("returns nothing for a zero/negative wage", () => {
+    expect(roundWageCandidates(0)).toEqual([]);
+    expect(roundWageCandidates(-100)).toEqual([]);
   });
 });
 

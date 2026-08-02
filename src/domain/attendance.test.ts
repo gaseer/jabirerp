@@ -135,9 +135,16 @@ describe("editAttendance", () => {
     expect(moved.site_id).toBe("site-2");
   });
 
-  it("rejects an end time before the start", async () => {
+  it("treats an end time before the start as an overnight shift", async () => {
     const a = await mark("09:00", "17:00");
-    await expect(edit(a.id, "17:00", "09:00")).rejects.toThrow(
+    const overnight = await edit(a.id, "17:00", "09:00");
+    expect(overnight.hours).toBe(16);
+    expect(overnight.work_date).toBe(a.work_date); // stored under the start date
+  });
+
+  it("still rejects a zero-length shift (equal start/end)", async () => {
+    const a = await mark("09:00", "17:00");
+    await expect(edit(a.id, "09:00", "09:00")).rejects.toThrow(
       "End time must be after start time",
     );
   });
@@ -213,6 +220,46 @@ describe("attendance status", () => {
     });
     const rejected = await rejectAttendance(b.id);
     expect(rejected.status).toBe("rejected");
+  });
+
+  it("markAttendance accepts a wage round-off override", async () => {
+    const a = await markAttendance(
+      { employeeId: EMP, siteId: "site-1", workDate: "2026-07-18", startTime: "09:00", endTime: "17:00" },
+      90000,
+    );
+    expect(a.wage_paise).toBe(90000); // not the computed 80000
+  });
+
+  it("editAttendance accepts a wage round-off override", async () => {
+    const a = await mark("09:00", "17:00");
+    const edited = await editAttendance(
+      a.id,
+      { employeeId: EMP, siteId: "site-1", workDate: "2026-07-18", startTime: "09:00", endTime: "17:00" },
+      95000,
+    );
+    expect(edited.wage_paise).toBe(95000);
+  });
+
+  it("approveAttendance can round off the wage; omitting the override keeps it as submitted", async () => {
+    const a = await markSelfAttendance({
+      employeeId: EMP,
+      siteId: "site-1",
+      workDate: "2026-07-18",
+      startTime: "09:00",
+      endTime: "17:00",
+    });
+    const approved = await approveAttendance(a.id, 75000);
+    expect(approved.wage_paise).toBe(75000);
+
+    const b = await markSelfAttendance({
+      employeeId: EMP,
+      siteId: "site-1",
+      workDate: "2026-07-19",
+      startTime: "09:00",
+      endTime: "17:00",
+    });
+    const approvedNoOverride = await approveAttendance(b.id);
+    expect(approvedNoOverride.wage_paise).toBe(b.wage_paise);
   });
 
   it("listAttendance filters by status", async () => {

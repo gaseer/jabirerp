@@ -64,10 +64,17 @@ export interface MarkAttendanceInput {
  * still occupies its time slot). Everything else (time validity, positive
  * length, wage snapshot) is identical for create and edit.
  */
+/**
+ * `wagePaiseOverride` lets the contractor round the computed wage (e.g. 922 →
+ * 900) instead of storing the raw hours × rate figure. Only exposed through
+ * markAttendance/editAttendance — markSelfAttendance never accepts it, so a
+ * worker's self-marked shift always gets the plain computed wage.
+ */
 async function buildShift(
   input: MarkAttendanceInput,
   ignoreId?: string,
   status: AttendanceStatus = "approved",
+  wagePaiseOverride?: number,
 ) {
   const employee = await employeeRepo.getById(input.employeeId);
   if (!employee) throw new Error("Worker not found");
@@ -95,7 +102,7 @@ async function buildShift(
     start_time: input.startTime,
     end_time: input.endTime,
     hours,
-    wage_paise: attendanceWagePaise(employee.hourly_wage_paise, hours),
+    wage_paise: wagePaiseOverride ?? attendanceWagePaise(employee.hourly_wage_paise, hours),
     status,
   };
 }
@@ -107,10 +114,16 @@ async function buildShift(
  * future wage edits only affect future attendance. Multiple shifts per day
  * are allowed (two sites in one day is legitimate), but a shift may not
  * OVERLAP an existing one — a worker can't be in two places at once, and this
- * is what blocks accidental duplicate marking. Overnight shifts are not allowed.
+ * is what blocks accidental duplicate marking. Overnight shifts (end time
+ * before start time) are allowed and stored under the start date.
+ * `wagePaiseOverride` lets the contractor round the wage off at entry time
+ * instead of storing the raw hours × rate figure.
  */
-export async function markAttendance(input: MarkAttendanceInput): Promise<AttendanceRow> {
-  return attendanceRepo.put(await buildShift(input));
+export async function markAttendance(
+  input: MarkAttendanceInput,
+  wagePaiseOverride?: number,
+): Promise<AttendanceRow> {
+  return attendanceRepo.put(await buildShift(input, undefined, "approved", wagePaiseOverride));
 }
 
 /**
@@ -131,30 +144,42 @@ export async function markSelfAttendance(
  * The wage is re-snapshotted at the worker's current hourly rate, since the
  * hours may have changed — an edit is a write, not a recompute of history.
  * Status is preserved (an edit doesn't reset a pending/approved/rejected row).
+ * `wagePaiseOverride` lets the contractor round the re-snapshotted wage off
+ * instead of storing the raw hours × rate figure.
  */
 export async function editAttendance(
   id: string,
   input: MarkAttendanceInput,
+  wagePaiseOverride?: number,
 ): Promise<AttendanceRow> {
   const existing = await attendanceRepo.getById(id);
   if (!existing || existing.deleted_at !== null)
     throw new Error("Attendance entry not found");
   return attendanceRepo.put({
     ...existing,
-    ...(await buildShift(input, id, existing.status)),
+    ...(await buildShift(input, id, existing.status, wagePaiseOverride)),
   });
 }
 
 /**
  * Admin review of a worker-submitted shift. Only flips status — hours/times/
  * wage_paise stay exactly as submitted, so approving never silently changes
- * what was recorded.
+ * what was recorded. `wagePaiseOverride` lets the contractor round the wage
+ * off at the moment of approval (the one point a worker-submitted shift can
+ * have its wage adjusted).
  */
-export async function approveAttendance(id: string): Promise<AttendanceRow> {
+export async function approveAttendance(
+  id: string,
+  wagePaiseOverride?: number,
+): Promise<AttendanceRow> {
   const existing = await attendanceRepo.getById(id);
   if (!existing || existing.deleted_at !== null)
     throw new Error("Attendance entry not found");
-  return attendanceRepo.put({ ...existing, status: "approved" });
+  return attendanceRepo.put({
+    ...existing,
+    status: "approved",
+    wage_paise: wagePaiseOverride ?? existing.wage_paise,
+  });
 }
 
 /** Rejects a worker-submitted shift — excluded from wages permanently. */

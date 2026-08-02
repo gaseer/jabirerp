@@ -12,7 +12,7 @@ import {
   isValidTime,
   timeRangeLabel,
 } from "@/domain/wages";
-import { formatPaise } from "@/lib/money";
+import { formatPaise, paiseToRupees, toPaise } from "@/lib/money";
 import { formatDate, todayIso } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { useEntryMode } from "@/store/settings";
@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Modal } from "@/components/ui/modal";
 import { EntryGrid } from "@/components/grid/EntryGrid";
+import { WageRoundEditor } from "@/components/WageRoundEditor";
 import type { GridColumn, GridRow } from "@/components/grid/SheetGrid";
 
 const pushSoon = () => sync.sync().catch(() => {});
@@ -39,6 +40,8 @@ export function WorkersTab({ site }: { site: SiteRow }) {
   // Non-null = the form is editing that existing entry instead of adding one.
   const [editingId, setEditingId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  // Wage round-off override for the add/edit form; "" = use the computed wage.
+  const [wageOverride, setWageOverride] = useState("");
 
   const { data: employees = [] } = useQuery({
     queryKey: ["employees"],
@@ -67,12 +70,16 @@ export function WorkersTab({ site }: { site: SiteRow }) {
         startTime: form.start,
         endTime: form.end,
       };
-      return editingId ? editAttendance(editingId, input) : markAttendance(input);
+      const override = wageOverride.trim() ? toPaise(wageOverride) : undefined;
+      return editingId
+        ? editAttendance(editingId, input, override)
+        : markAttendance(input, override);
     },
     onSuccess: () => {
       pushSoon();
       setErr(null);
       if (editingId) cancelEdit();
+      else setWageOverride("");
       qc.invalidateQueries({ queryKey: ["site-attendance", site.id] });
       qc.invalidateQueries({ queryKey: ["site-pnl", site.id] });
       // Wages changed → worker balances and duplicate hints are stale too.
@@ -92,12 +99,16 @@ export function WorkersTab({ site }: { site: SiteRow }) {
       start: row.start_time,
       end: row.end_time,
     });
+    // Pre-fill with the currently stored wage so an unrelated edit (e.g. date)
+    // doesn't silently discard a rounding the contractor already applied.
+    setWageOverride(String(paiseToRupees(row.wage_paise)));
   }
 
   function cancelEdit() {
     setEditingId(null);
     setErr(null);
     setForm(BLANK_SHIFT);
+    setWageOverride("");
   }
 
   // Per-worker rollup for this site — pending/rejected shifts show in the
@@ -174,15 +185,17 @@ export function WorkersTab({ site }: { site: SiteRow }) {
       </div>
       {previewHours > 0 ? (
         selected && (
-          <p className="text-sm text-muted">
-            {hoursLabel(previewHours)} × {formatPaise(selected.hourly_wage_paise)}
-            /hr ={" "}
-            <span className="font-semibold text-text">
-              {formatPaise(
-                attendanceWagePaise(selected.hourly_wage_paise, previewHours),
-              )}
-            </span>
-          </p>
+          <div className="space-y-1.5 rounded-sm bg-border/30 p-2">
+            <p className="text-xs text-muted">
+              {hoursLabel(previewHours)} × {formatPaise(selected.hourly_wage_paise)}/hr ={" "}
+              {formatPaise(attendanceWagePaise(selected.hourly_wage_paise, previewHours))}
+            </p>
+            <WageRoundEditor
+              computedPaise={attendanceWagePaise(selected.hourly_wage_paise, previewHours)}
+              value={wageOverride}
+              onChange={setWageOverride}
+            />
+          </div>
         )
       ) : (
         <p className="text-sm text-red">End time must be after start time.</p>
@@ -221,6 +234,12 @@ export function WorkersTab({ site }: { site: SiteRow }) {
     const h = hoursBetween(r.start, r.end);
     return h > 0 ? attendanceWagePaise(wage, h) : 0;
   };
+  // Blank/unparsable override -> fall back to the computed wage for that row.
+  const rowWageOverridePaise = (r: GridRow) => {
+    const raw = (r.wage ?? "").trim();
+    return raw ? toPaise(raw) : null;
+  };
+  const rowFinalWagePaise = (r: GridRow) => rowWageOverridePaise(r) ?? rowWagePaise(r);
   const attendanceColumns: GridColumn[] = [
     {
       key: "worker",
@@ -232,21 +251,22 @@ export function WorkersTab({ site }: { site: SiteRow }) {
     { key: "date", label: "Date", type: "date" },
     { key: "start", label: "From", type: "time" },
     { key: "end", label: "To", type: "time" },
+    { key: "wage", label: "Round ₹ (optional)", type: "rupee", align: "right" },
   ];
   const attendanceGrid = (
     <EntryGrid
       columns={attendanceColumns}
-      blankRow={{ worker: "", date: todayIso(), start: "09:00", end: "17:00" }}
+      blankRow={{ worker: "", date: todayIso(), start: "09:00", end: "17:00", wage: "" }}
       isRowBlank={(r) => !r.worker}
       computed={{
         label: "Wage",
         render: (r) => {
-          const p = rowWagePaise(r);
+          const p = rowFinalWagePaise(r);
           return p ? formatPaise(p) : "—";
         },
       }}
       footer={(rows) => (
-        <>Total wages: {formatPaise(rows.reduce((s, r) => s + rowWagePaise(r), 0))}</>
+        <>Total wages: {formatPaise(rows.reduce((s, r) => s + rowFinalWagePaise(r), 0))}</>
       )}
       saveLabel="Save attendance"
       commit={async (rows) => {
@@ -261,13 +281,16 @@ export function WorkersTab({ site }: { site: SiteRow }) {
             throw new Error("Every row needs From/To times with end after start");
         }
         for (const r of rows) {
-          await markAttendance({
-            employeeId: r.worker,
-            siteId: site.id,
-            workDate: r.date || todayIso(),
-            startTime: r.start,
-            endTime: r.end,
-          });
+          await markAttendance(
+            {
+              employeeId: r.worker,
+              siteId: site.id,
+              workDate: r.date || todayIso(),
+              startTime: r.start,
+              endTime: r.end,
+            },
+            rowWageOverridePaise(r) ?? undefined,
+          );
         }
         pushSoon();
       }}

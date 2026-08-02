@@ -71,8 +71,8 @@ describe("buildSettlement", () => {
     expect(s.periodWagesPaise).toBe(50000);
   });
 
-  it("rejects inverted or malformed times", async () => {
-    await expect(day("2026-07-05", "15:00", "13:00")).rejects.toThrow(
+  it("rejects zero-length or malformed times", async () => {
+    await expect(day("2026-07-05", "15:00", "15:00")).rejects.toThrow(
       "End time must be after start time",
     );
     await expect(day("2026-07-05", "9:00", "17:00")).rejects.toThrow("Invalid time");
