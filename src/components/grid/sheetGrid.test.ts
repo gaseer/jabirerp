@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { parseClipboardMatrix } from "./SheetGrid";
+import {
+  MAX_COL_PX,
+  MIN_COL_PX,
+  clampColumnWidth,
+  parseClipboardMatrix,
+  parseStoredWidths,
+  widthVar,
+} from "./SheetGrid";
 
 /**
  * Pasting a block copied out of Excel/Sheets is the fastest way into the
@@ -35,5 +42,38 @@ describe("parseClipboardMatrix", () => {
 
   it("treats a single value as one cell", () => {
     expect(parseClipboardMatrix("1200")).toEqual([["1200"]]);
+  });
+});
+
+/**
+ * Dragged column widths are remembered per grid. A width read back from
+ * storage must never be able to make a column unusable (0px, negative, wider
+ * than the screen) or crash the sheet on corrupt JSON.
+ */
+describe("column widths", () => {
+  it("clamps a drag to a readable range and whole pixels", () => {
+    expect(clampColumnWidth(10)).toBe(MIN_COL_PX);
+    expect(clampColumnWidth(-500)).toBe(MIN_COL_PX);
+    expect(clampColumnWidth(9999)).toBe(MAX_COL_PX);
+    expect(clampColumnWidth(240.6)).toBe(241);
+  });
+
+  it("reads stored widths back as clamped pixels", () => {
+    expect(parseStoredWidths('{"description":320,"qty":8}')).toEqual({
+      description: 320,
+      qty: MIN_COL_PX,
+    });
+  });
+
+  it("ignores corrupt or non-numeric storage instead of breaking the grid", () => {
+    expect(parseStoredWidths(null)).toEqual({});
+    expect(parseStoredWidths("not json")).toEqual({});
+    expect(parseStoredWidths("[320]")).toEqual({});
+    expect(parseStoredWidths('{"description":"wide","unit":null,"rate":0}')).toEqual({});
+  });
+
+  it("makes a CSS-safe variable name from any column key", () => {
+    expect(widthVar("description")).toBe("--w-description");
+    expect(widthVar("rate ₹/hr")).toBe("--w-rate---hr");
   });
 });

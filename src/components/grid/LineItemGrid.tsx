@@ -17,7 +17,15 @@ import { SheetGrid, type GridColumn, type GridRow } from "./SheetGrid";
  */
 
 const COLUMNS: GridColumn[] = [
-  { key: "description", label: "Description", type: "text" },
+  // Descriptions run long: the cell carries ⤢ (full-width editor) and the
+  // header divider drags wider — see SheetGrid.
+  {
+    key: "description",
+    label: "Description",
+    type: "text",
+    width: "minmax(160px,1fr)",
+    expandable: true,
+  },
   { key: "qty", label: "Qty", type: "decimal", width: "64px", align: "right" },
   { key: "rate", label: "Rate ₹", type: "rupee", width: "96px", align: "right" },
 ];
@@ -150,11 +158,16 @@ export function LineItemGrid({
         blankRow={blankRow}
         onBlur={() => persist(rows)}
         onDeleteRow={deleteRow}
+        storageKey={`doc-${kind}`}
         computed={{
           label: "Amount",
           render: (r) => formatPaise(rowAmountPaise(r)),
         }}
       />
+      <p className="text-xs text-muted">
+        Long description? Tap ⤢ in the cell for a full-width box (⤢ in the header
+        opens every row), or drag a column divider to widen it — the width sticks.
+      </p>
       <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
         <span>Total</span>
         <span>{formatPaise(total)}</span>

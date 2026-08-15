@@ -143,6 +143,7 @@ Preference lives in `localStorage` (`powerplus-settings`), **defaults to Excel**
 - [ ] Edits **write straight through** to Dexie (debounced ~0.5s, and immediately on leaving a cell). Reload → every row is still there with the same values/positions. ✕ soft-deletes that row (history preserved). Share PDF/Excel and Convert-to-bill use the saved rows.
 - [ ] Convert a quotation → the grid reseeds from the copied **bill** items and stays editable; no rows lost or duplicated.
 - [ ] Switch to **Simple form** mid-document → the original add-bar + edit-modal UI returns, showing the same items; switch back → grid shows them again.
+- [ ] Long descriptions (see 9f) expand and the Description column drags wider.
 
 ### 9b. Batch grids (append-only / entry screens)
 Fill several rows → running **Total** footer → **✓ Save (N)** commits all as new rows → grid clears → history/period totals update. Amount ≤ ₹0 (or, for attendance, a bad time / missing pick) blocks the **whole** save with an error and writes **nothing** (no partial batch, outbox unchanged).
@@ -168,6 +169,20 @@ Fill several rows → running **Total** footer → **✓ Save (N)** commits all 
 - [ ] Grid header row stays visible above the scrolling body; the ＋ blank row and Save button stay reachable.
 - [ ] Every Sites tab (Quotation/Bill, Advances, Expenses, Workers, Tasks — Overview is read-only) and every Worker-detail tab (Attendance, Payments — Settlement is read-only) honours the Excel/Form toggle.
 
+### 9f. Long descriptions — expand + resize (added 2026-08-15)
+Excel mode only. Applies to **Quotation / Bill → Description** and **Invoice → Work / Item**; both behave identically.
+
+- [ ] Type a very long description. The cell still clips it, but **hovering** the cell shows the whole text as a tooltip (desktop).
+- [ ] **⤢ inside the cell** opens a full-width panel under that row: `Row N · Description` label, a **Done** button, and a textarea that **grows with the text** (no inner scrollbar, nothing hidden). Editing there updates the cell live and saves on the same debounce/blur as the cell.
+- [ ] In the panel, **Enter** and **Esc** close it (they do *not* insert a line break); pasting multi-line text lands as one line. Reload → the description is exactly what was typed, on one line, and the PDF/Excel show it in full.
+- [ ] **⤢ in the header** (leftmost `#` cell) expands **every** row at once; it turns to **⤡** and collapses them all again. Individual ⤢/⤡ still work while all are open.
+- [ ] Expand the blank **＋ row** and start typing in the panel → the row is created and the panel stays open on it (does not jump shut mid-sentence).
+- [ ] **Drag the divider on a column header** (right edge of Description / any column) → the column resizes live, min ~64px, max ~720px. **Double-click** the divider resets it to the default width. Keyboard: Tab to the divider, **←/→** resizes in steps.
+- [ ] Dragged widths **persist across reloads** and are **per grid** (widening the invoice's Work/Item does not change the quotation grid). Clearing site data restores defaults; a browser with storage blocked (private mode) still resizes for the session and never errors.
+- [ ] **Phone**: the expand panel spans the **visible width** and stays fully in view even when the sheet is scrolled sideways; the textarea does not trigger iOS zoom. The sheet still scrolls inside its own box — the page body never scrolls sideways.
+- [ ] **Phone**: dragging a header divider does not scroll/zoom the page while dragging.
+- [ ] Nothing else regressed: Enter → next row, ↑/↓ nav, Excel block paste, ⧉ copy, ↑↓ reorder, ✕ delete, live Amount/Total.
+
 ## 10. Direct invoice (added 2026-07-28)
 
 The contractor bills works + items **straight into an invoice** — no quotation,
@@ -189,6 +204,7 @@ number, date, work title, discount and notes.
 - [ ] Enter → next row, Tab across, ↑/↓ within a column. Amount, the per-section subtotals and the sticky bottom **Total** bar all update as you type.
 - [ ] **Paste from Excel**: copy a block of `description⇥qty⇥rate` rows in Excel/Sheets → click a cell → paste. Rows spill down and across, creating rows as needed; pasting a single value still behaves like a normal paste. Money pasted as `1,200` or `₹1,200` parses correctly.
 - [ ] **Description autocomplete**: typing a work/item billed before offers it in the dropdown (with its last rate); picking it fills **Rate**, **Unit** and **Section** — but never overwrites anything already typed.
+- [ ] **Long work text**: ⤢ in the Work / Item cell (or ⤢ in the header for every row) opens the full-width editor, and the column header divider drags wider — full checks in **9f**.
 - [ ] **⧉** copies a row directly below it; **↑ / ↓** reorder; **✕** soft-deletes. After any of these, reload → the order is exactly what was on screen (positions persist).
 - [ ] Edits write through to Dexie debounced ~0.5s and immediately on leaving a cell. Reload mid-invoice → nothing lost.
 

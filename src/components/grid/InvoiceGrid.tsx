@@ -120,6 +120,8 @@ export function InvoiceGrid({
       type: "combo",
       width: "minmax(160px,1fr)",
       placeholder: "What was done…",
+      // Long work text: ⤢ opens a full-width box, header divider drags wider.
+      expandable: true,
       options: library.map((l) => ({
         value: l.description,
         label: `${formatPaise(l.rate_paise)}${l.unit ? ` / ${l.unit}` : ""}`,
@@ -263,6 +265,7 @@ export function InvoiceGrid({
         onMoveRow={moveRow}
         onCellCommit={autofill}
         maxBodyHeight="46vh"
+        storageKey="invoice"
         computed={{
           label: "Amount",
           render: (r) => formatPaise(rowAmountPaise(r)),
@@ -272,6 +275,10 @@ export function InvoiceGrid({
       <p className="text-xs text-muted">
         Enter → next row · paste a block copied from Excel to fill many rows ·
         ⧉ copies a row, ↑↓ reorder.
+      </p>
+      <p className="text-xs text-muted">
+        Long work text? Tap ⤢ in the cell for a full-width box (⤢ in the header
+        opens every row), or drag a column divider to widen it — the width sticks.
       </p>
 
       {sections.length > 1 && (
