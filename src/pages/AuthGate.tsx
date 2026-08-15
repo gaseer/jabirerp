@@ -1,26 +1,27 @@
-import { useState } from "react";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { WORKER_LOGIN_PATH } from "@/lib/routes";
 import { Login } from "@/pages/Login";
 import { WorkerLogin } from "@/pages/worker/WorkerLogin";
 
 /**
- * Pre-auth entry point: a small toggle between the contractor's existing
- * email/password login and the worker's name+phone login. Login.tsx itself
- * is untouched — this just decides which one to show.
+ * Pre-auth entry point. The two sign-ins live at their own URLs rather than
+ * behind a toggle, so a worker can be handed a link (or bookmark / install the
+ * PWA) that always opens the worker screen instead of the contractor's.
+ *
+ * This needs its own BrowserRouter because the signed-in contractor router in
+ * App.tsx only mounts after auth. Both never mount at once.
+ *
+ * Anything not /worker is the contractor login — a signed-in deep link like
+ * /sites/x therefore shows the contractor sign-in, and App.tsx's router picks
+ * the path back up once the session exists.
  */
 export function AuthGate() {
-  const [asWorker, setAsWorker] = useState(false);
-
   return (
-    <div className="relative min-h-full">
-      {/* Login/WorkerLogin each own a full min-h-full centered layout already
-          — this just floats the toggle near the bottom of that same page. */}
-      {asWorker ? <WorkerLogin /> : <Login />}
-      <button
-        className="absolute inset-x-0 bottom-6 text-center text-sm text-primary hover:underline"
-        onClick={() => setAsWorker((v) => !v)}
-      >
-        {asWorker ? "I'm the contractor — sign in instead" : "I'm a worker — sign in instead"}
-      </button>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path={WORKER_LOGIN_PATH} element={<WorkerLogin />} />
+        <Route path="*" element={<Login />} />
+      </Routes>
+    </BrowserRouter>
   );
 }

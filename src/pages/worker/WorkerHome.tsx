@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AttendanceStatus, EmployeeRow } from "@/lib/db";
 import { employeeRepo } from "@/repo/repos";
-import { sync } from "@/repo/SupabaseSync";
+import { SYNC_DONE_EVENT, sync } from "@/repo/SupabaseSync";
+import { useOnline } from "@/hooks/useOnline";
 import { refreshWorkerSiteCache, listWorkerSiteCache } from "@/repo/workerSites";
 import { listAttendance, markSelfAttendance } from "@/domain/attendance";
 import { listTxns, sumPaise } from "@/domain/transactions";
@@ -56,7 +57,7 @@ export function WorkerHome() {
     (useAuth((s) => s.user?.user_metadata?.employee_id) as string | undefined) ?? "";
   const [tab, setTab] = useState<TabKey>("attendance");
 
-  const { data: worker } = useQuery({
+  const { data: worker, isFetched } = useQuery({
     queryKey: ["me", employeeId],
     queryFn: async () => (await employeeRepo.getById(employeeId)) ?? null,
     enabled: Boolean(employeeId),
@@ -71,7 +72,17 @@ export function WorkerHome() {
   });
   const siteName = new Map(sites.map((s) => [s.id, s.name]));
 
-  if (!worker) return <Card className="text-muted">Loading…</Card>;
+  // The employee row is a Dexie read, so on a fresh sign-in it is legitimately
+  // absent until the first pull lands. Waiting for one completed sync is what
+  // separates "not here YET" from "not coming" — without it this screen used
+  // to show "Loading…" forever whenever the row never arrived.
+  const syncSettled = useSyncSettled();
+  const resolved = employeeId ? isFetched : true;
+
+  if (!worker) {
+    if (!syncSettled || !resolved) return <Card className="text-muted">Loading…</Card>;
+    return <WorkerRecordMissing />;
+  }
 
   return (
     <div className="space-y-4">
@@ -96,6 +107,52 @@ export function WorkerHome() {
       {tab === "payments" && <MyPaymentsTab worker={worker} />}
       {tab === "settlement" && <MySettlementTab worker={worker} siteName={siteName} />}
     </div>
+  );
+}
+
+/** True once at least one sync round has completed since mount (the event
+ *  fires even offline, where sync() is a no-op — that IS a settled answer). */
+function useSyncSettled(): boolean {
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    const done = () => setSettled(true);
+    window.addEventListener(SYNC_DONE_EVENT, done);
+    return () => window.removeEventListener(SYNC_DONE_EVENT, done);
+  }, []);
+  return settled;
+}
+
+/**
+ * Terminal state instead of an endless spinner: the signed-in identity has no
+ * worker record to show. Either the contractor removed/renamed them (sign in
+ * again to re-resolve — claim_employee re-checks name+phone), or this device
+ * has never been online since sign-in and has nothing cached.
+ */
+function WorkerRecordMissing() {
+  const online = useOnline();
+  const signOut = useAuth((s) => s.signOut);
+
+  return (
+    <Card className="space-y-3">
+      <div className="font-semibold">Can't load your details</div>
+      {online ? (
+        <>
+          <p className="text-sm text-muted">
+            Your worker record isn't available for this login. Ask your contractor to
+            check you are still listed with this exact name and phone number, then sign
+            in again.
+          </p>
+          <Button size="sm" variant="soft" onClick={signOut}>
+            Sign in again
+          </Button>
+        </>
+      ) : (
+        <p className="text-sm text-muted">
+          You're offline and your details aren't saved on this device yet. Connect to the
+          internet once, then reopen the app.
+        </p>
+      )}
+    </Card>
   );
 }
 

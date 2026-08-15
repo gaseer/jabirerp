@@ -45,6 +45,21 @@ function cachedUser(): User | null {
 
 const offline = () => typeof navigator !== "undefined" && !navigator.onLine;
 
+/**
+ * claim_employee raises bare sentinel strings (`raise exception 'x'`), which
+ * arrive inside a generic Postgres error message. Turn each into something a
+ * worker standing on a site can act on.
+ */
+function claimErrorMessage(raw: string | undefined): string {
+  if (raw && /ambiguous_worker/.test(raw)) {
+    return "Two workers are saved with this same name and phone. Ask your contractor to correct one of them.";
+  }
+  if (raw && /already_claimed/.test(raw)) {
+    return "This worker is already signed in on another login. Ask your contractor to tap “Reset login” on your worker card, then try again.";
+  }
+  return "No matching worker found. Ask your contractor to check your name and phone, or add you as a worker first.";
+}
+
 /** onAuthStateChange must be registered once (StrictMode re-runs init in dev). */
 let listenerRegistered = false;
 
@@ -133,7 +148,9 @@ export const useAuth = create<AuthState>((set) => ({
   signInOrClaimWorker: async (name, phone) => {
     const trimmedName = name.trim();
     if (!trimmedName || !phone.trim()) throw new Error("Enter your name and phone number");
-    const { email, password } = workerCredential(phone);
+    // Credential covers name AND phone — see workerAuth.ts. A phone-only
+    // credential merged every worker sharing a handset into one account.
+    const { email, password } = workerCredential(trimmedName, phone);
 
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
     if (signInError) {
@@ -152,21 +169,41 @@ export const useAuth = create<AuthState>((set) => ({
       );
     }
 
-    const metadata = user.user_metadata as { employee_id?: string };
-    if (!metadata.employee_id) {
-      const { data, error } = await supabase.rpc("claim_employee", {
-        p_name: trimmedName,
-        p_phone: phone,
-      });
-      const claim = data?.[0] as { employee_id: string; owner_id: string } | undefined;
-      if (error || !claim) {
-        await supabase.auth.signOut();
-        cacheUser(null);
-        set({ session: null, user: null });
-        throw new Error(
-          "No matching worker found. Ask your contractor to check your name and phone, or add you as a worker first.",
-        );
-      }
+    // Resolve the employee row on EVERY sign-in, not just the first. Two
+    // reasons, both bugs in the previous "skip if metadata.employee_id is set"
+    // version: (1) the RPC is the ONLY place name+phone is checked against the
+    // contractor's list, so skipping it meant the name was never validated
+    // after activation; (2) employee_id is a cached pointer — if the
+    // contractor deleted and re-added the worker, it pointed at a row that no
+    // longer exists and the worker app sat on "Loading…" forever with no way
+    // out. Re-resolving fixes it on the next sign-in.
+    const { data, error } = await supabase.rpc("claim_employee", {
+      p_name: trimmedName,
+      p_phone: phone,
+    });
+    const claim = data?.[0] as { employee_id: string; owner_id: string } | undefined;
+    if (error || !claim) {
+      // Failed validation must not leave a usable session behind.
+      await supabase.auth.signOut();
+      cacheUser(null);
+      set({ session: null, user: null });
+      throw new Error(claimErrorMessage(error?.message));
+    }
+
+    const metadata = (user.user_metadata ?? {}) as {
+      employee_id?: string;
+      owner_id?: string;
+      display_name?: string;
+      role?: string;
+    };
+    // Only write metadata when something actually changed — updateUser is a
+    // network round trip and fires USER_UPDATED on every listener.
+    if (
+      metadata.role !== "worker" ||
+      metadata.employee_id !== claim.employee_id ||
+      metadata.owner_id !== claim.owner_id ||
+      metadata.display_name !== trimmedName
+    ) {
       const { error: updateError } = await supabase.auth.updateUser({
         data: {
           role: "worker",

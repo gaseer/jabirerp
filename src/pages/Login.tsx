@@ -1,9 +1,11 @@
 import { useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/store/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { BrandMark } from "@/components/BrandMark";
+import { WORKER_LOGIN_PATH } from "@/lib/routes";
 
 export function Login() {
   const { signIn, signUp } = useAuth();
@@ -43,7 +45,7 @@ export function Login() {
   }
 
   return (
-    <div className="flex min-h-full items-center justify-center p-6">
+    <div className="flex min-h-full flex-col items-center justify-center gap-4 p-6">
       <Card className="w-full max-w-sm">
         <div className="mb-5 flex flex-col items-center text-center">
           <BrandMark lockup />
@@ -86,6 +88,39 @@ export function Login() {
           {mode === "in" ? "Need an account? Sign up" : "Have an account? Sign in"}
         </button>
       </Card>
+
+      {/* Deliberately loud: this is the contractor's screen, and a worker who
+          lands here by default must be able to spot the way out at a glance —
+          a small tinted text link was being missed. Its own card, brand blue,
+          helmet mark, tap-target sized. */}
+      <Link
+        to={WORKER_LOGIN_PATH}
+        className="group flex w-full max-w-sm items-center gap-3 rounded border-2 border-primary bg-primary-soft p-3 text-primary shadow-card transition hover:bg-primary hover:text-white"
+      >
+        <span
+          aria-hidden
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-sm bg-primary text-white transition group-hover:bg-white group-hover:text-primary"
+        >
+          <HelmetIcon />
+        </span>
+        <span className="min-w-0 leading-tight">
+          <span className="block text-base font-bold">I'm a worker</span>
+          <span className="block text-xs opacity-80">Sign in with your name and phone</span>
+        </span>
+        <span aria-hidden className="ml-auto pr-1 text-xl font-bold">
+          &rsaquo;
+        </span>
+      </Link>
     </div>
+  );
+}
+
+/** Hard hat — the worker sign-in marker. Inline: the app ships no icon set. */
+function HelmetIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor" aria-hidden>
+      <path d="M12 3a1 1 0 0 0-1 1v2.26A6.99 6.99 0 0 0 6 13v2h12v-2a6.99 6.99 0 0 0-5-6.74V4a1 1 0 0 0-1-1Z" />
+      <path d="M4 16.5A1.5 1.5 0 0 1 5.5 15h13a1.5 1.5 0 0 1 0 3h-13A1.5 1.5 0 0 1 4 16.5Z" />
+    </svg>
   );
 }

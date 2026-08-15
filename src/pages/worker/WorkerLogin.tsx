@@ -6,10 +6,11 @@ import { Card } from "@/components/ui/card";
 import { BrandMark } from "@/components/BrandMark";
 
 /**
- * Worker sign-in: name + phone only, no PIN. One button handles both
- * first-time activation (must match a worker the contractor already added)
- * and every login after — see signInOrClaimWorker in the auth store. Once
- * signed in, the session persists like the owner's until an explicit Logout.
+ * Worker sign-in at its own URL (/worker): name + phone only, no PIN. One
+ * button handles both first-time activation (must match a worker the
+ * contractor already added) and every login after — see signInOrClaimWorker in
+ * the auth store. Once signed in, the session persists like the owner's until
+ * an explicit Logout.
  */
 export function WorkerLogin() {
   const signInOrClaimWorker = useAuth((s) => s.signInOrClaimWorker);
@@ -38,12 +39,17 @@ export function WorkerLogin() {
   }
 
   return (
-    <div className="flex min-h-full items-center justify-center p-6">
+    <div className="flex min-h-full flex-col items-center justify-center gap-4 p-6">
       <Card className="w-full max-w-sm">
-        <div className="mb-5 flex flex-col items-center text-center">
+        <div className="mb-4 flex flex-col items-center text-center">
           <BrandMark lockup />
         </div>
-        <p className="mb-4 text-sm text-muted">Worker sign-in — enter your name and phone</p>
+        {/* Names the screen loudly, so a worker knows at a glance they are on
+            the right one and not the contractor's. */}
+        <div className="mb-4 rounded-sm bg-primary-soft px-3 py-2 text-center">
+          <p className="text-base font-bold text-primary">Worker sign-in</p>
+          <p className="text-xs text-primary opacity-80">Enter your name and phone</p>
+        </div>
         <form onSubmit={submit} className="space-y-3">
           <Input
             placeholder="Full name"
