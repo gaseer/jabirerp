@@ -15,9 +15,10 @@ import { shareDocumentXlsx } from "@/lib/xlsx";
 import { formatPaise, toPaise } from "@/lib/money";
 import { useEntryMode } from "@/store/settings";
 import { LineItemGrid } from "@/components/grid/LineItemGrid";
-import { Card } from "@/components/ui/card";
+import { Card, SectionHead } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Icon } from "@/components/Icon";
 import { Modal } from "@/components/ui/modal";
 
 const pushSoon = () => sync.sync().catch(() => {});
@@ -138,12 +139,14 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
   return (
     <>
       <Card className="space-y-3">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="font-semibold">{heading}</span>
-          <span className="text-xs text-muted">
-            {items.length} {items.length === 1 ? "item" : "items"}
-          </span>
-        </div>
+        <SectionHead
+          title={heading}
+          action={
+            <span className="label text-[10px]">
+              {items.length} {items.length === 1 ? "item" : "items"}
+            </span>
+          }
+        />
 
         {excel ? (
           <LineItemGrid
@@ -158,11 +161,11 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
         )}
 
         <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-          <Button size="sm" variant="soft" disabled={items.length === 0} onClick={sharePdf}>
-            📄 Share {heading} PDF
+          <Button size="sm" variant="ghost" disabled={items.length === 0} onClick={sharePdf}>
+            {heading} PDF
           </Button>
-          <Button size="sm" variant="soft" disabled={items.length === 0} onClick={shareExcel}>
-            📊 Share {heading} Excel
+          <Button size="sm" variant="ghost" disabled={items.length === 0} onClick={shareExcel}>
+            {heading} Excel
           </Button>
           {!isBill && (
             <Button
@@ -172,7 +175,7 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
                 if (confirm("Convert this quotation to a bill?")) convert.mutate();
               }}
             >
-              → Convert to Bill
+              Convert to Bill
             </Button>
           )}
         </div>
@@ -208,7 +211,7 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
             </div>
             <p className="text-sm text-muted">
               Line total:{" "}
-              <span className="font-semibold text-text">
+              <span className="figure text-text">
                 {formatPaise(
                   lineAmountPaise(Number(edit.qty) || 0, toPaise(edit.rate)),
                 )}
@@ -216,7 +219,7 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
             </p>
             <div className="flex gap-2 pt-1">
               <Button type="submit" size="sm" disabled={saveItem.isPending}>
-                ✓ Save changes
+                Save changes
               </Button>
               <Button
                 type="button"
@@ -268,11 +271,11 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
               onChange={(e) => setForm({ ...form, rate: e.target.value })}
             />
             <Button type="submit" size="md" disabled={saveItem.isPending}>
-              ＋ Add
+              Add
             </Button>
           </div>
           <p className="text-xs text-muted">
-            Line total: <span className="text-text">{formatPaise(previewAmount)}</span> ·
+            Line total: <span className="figure text-text">{formatPaise(previewAmount)}</span> ·
             Enter to add — keeps typing for the next item.
           </p>
         </form>
@@ -304,13 +307,13 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
                     {it.qty} × {formatPaise(it.rate_paise)}
                   </div>
                 </button>
-                <div className="font-medium">{formatPaise(it.amount_paise)}</div>
+                <div className="figure text-sm">{formatPaise(it.amount_paise)}</div>
                 <button
-                  className="text-red"
+                  className="text-muted transition-colors hover:text-red"
                   aria-label="Remove item"
                   onClick={() => removeItem.mutate(it.id)}
                 >
-                  ✕
+                  <Icon name="trash" className="h-4 w-4" />
                 </button>
               </div>
             ))}
@@ -319,7 +322,7 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
 
         <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
           <span>Total</span>
-          <span>{formatPaise(total)}</span>
+          <span className="figure">{formatPaise(total)}</span>
         </div>
       </>
     );

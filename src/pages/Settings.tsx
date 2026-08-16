@@ -1,8 +1,9 @@
 import { useOnline } from "@/hooks/useOnline";
 import { useAuth } from "@/store/auth";
 import { useSettings, type EntryMode } from "@/store/settings";
-import { Card } from "@/components/ui/card";
+import { Card, SectionHead } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Icon, type IconName } from "@/components/Icon";
 import { cn } from "@/lib/utils";
 
 /** App preferences: data-entry style + account. */
@@ -15,21 +16,25 @@ export function Settings() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold">Settings</h2>
+      <h2 className="text-xl">Settings</h2>
 
       <Card className="space-y-3">
-        <div>
-          <div className="font-semibold">Data entry style</div>
-          <p className="text-sm text-muted">
-            How you add line items, expenses, advances and attendance.
-          </p>
-        </div>
+        <SectionHead
+          title={
+            <div className="font-sans normal-case tracking-normal">
+              <div className="text-sm font-semibold text-text">Data entry style</div>
+              <p className="mt-0.5 text-xs font-normal text-muted">
+                How you add line items, expenses, advances and attendance.
+              </p>
+            </div>
+          }
+        />
 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <ModeCard
             active={entryMode === "excel"}
             onClick={() => setEntryMode("excel")}
-            icon="📊"
+            icon="sheet"
             title="Excel / table"
             desc="Type many rows at once in a spreadsheet grid — Enter jumps to the next row. Best for long quotations."
             mode="excel"
@@ -37,7 +42,7 @@ export function Settings() {
           <ModeCard
             active={entryMode === "form"}
             onClick={() => setEntryMode("form")}
-            icon="📝"
+            icon="edit"
             title="Simple form"
             desc="Add one record at a time with a card form. Fewer fields on screen at once."
             mode="form"
@@ -50,16 +55,19 @@ export function Settings() {
       </Card>
 
       <Card className="space-y-3">
-        <div className="font-semibold">Account</div>
+        <SectionHead title="Account" />
         <div className="flex items-center justify-between gap-2 text-sm">
           <span className="truncate text-muted">{email ?? "Not signed in"}</span>
           <span
             className={cn(
-              "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",
-              online ? "bg-green-soft text-green" : "bg-amber-soft text-amber",
+              "label flex shrink-0 items-center gap-1.5",
+              online ? "text-green" : "text-amber",
             )}
           >
-            {online ? "● Online" : "● Offline"}
+            <span
+              className={cn("h-1.5 w-1.5 rounded-full", online ? "bg-green" : "bg-amber")}
+            />
+            {online ? "Online" : "Offline"}
           </span>
         </div>
         <Button variant="soft" size="sm" onClick={signOut}>
@@ -80,7 +88,7 @@ function ModeCard({
 }: {
   active: boolean;
   onClick: () => void;
-  icon: string;
+  icon: IconName;
   title: string;
   desc: string;
   mode: EntryMode;
@@ -98,9 +106,12 @@ function ModeCard({
       )}
     >
       <div className="flex items-center justify-between">
-        <span className="text-lg">{icon}</span>
+        <Icon name={icon} className={cn("h-5 w-5", active ? "text-primary" : "text-muted")} />
         {active && (
-          <span className="text-xs font-semibold text-primary">✓ Selected</span>
+          <span className="label flex items-center gap-1 text-primary">
+            <Icon name="check" className="h-3 w-3" />
+            Selected
+          </span>
         )}
       </div>
       <div className="mt-1 font-semibold">

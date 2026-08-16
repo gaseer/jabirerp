@@ -462,7 +462,7 @@ export function SheetGrid({
       <div style={{ minWidth: "min-content" }}>
         {/* Header */}
         <div
-          className="sticky top-0 z-10 grid items-center border-b border-border bg-bg/95 text-[11px] font-semibold uppercase tracking-wide text-muted backdrop-blur"
+          className="label sticky top-0 z-10 grid items-center border-b border-border bg-bg/95 backdrop-blur"
           style={{ gridTemplateColumns: template }}
         >
           <div className="flex items-center justify-center px-1 py-1.5">
@@ -558,6 +558,7 @@ export function SheetGrid({
                       onPaste: (e: React.ClipboardEvent) => handlePaste(e, r, ci),
                       className: cn(
                         cellBase,
+                        (c.type === "rupee" || c.type === "decimal") && "tabular-nums",
                         c.align === "right" && "text-right",
                         c.expandable && "pr-7",
                       ),
@@ -762,7 +763,7 @@ function ExpandedField({
 
   return (
     <div className="space-y-1">
-      <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-muted">
+      <div className="label flex items-center justify-between">
         <span>
           {rowLabel} · {label}
         </span>

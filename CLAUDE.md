@@ -46,6 +46,7 @@ Supabase credentials come from `.env` (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_
 ## Invariants
 
 - **Offline-first UI:** the QueryClient uses `networkMode: "always"` (queries/mutations read Dexie, never the network) — removing it makes all data vanish when offline. Auth falls back to a localStorage-cached user (`powerplus-last-user`) when offline, so an expired token can't lock the user out of local data.
+
 - **Outbox resilience (`SupabaseSync.push`):** a failing row skips only its own table's queue; duplicate row snapshots coalesce to the newest; items whose `owner_id` ≠ current user are dropped (they can never pass RLS). Pull paginates (1000-row Supabase cap) and compares timestamps as epoch ms — Postgres returns `+00:00`, local writes `Z`; never compare lexically.
 
 - **Money = integer paise everywhere** (storage, math, domain). Format to ₹ only at display via `formatPaise` (`src/lib/money.ts`). Round once, at write time.

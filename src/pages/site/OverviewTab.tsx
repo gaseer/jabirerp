@@ -46,14 +46,14 @@ export function OverviewTab({ site }: { site: SiteRow }) {
         {rows.map((r) => (
           <div key={r.k} className="flex items-center justify-between py-1.5">
             <span className="text-sm text-muted">{r.k}</span>
-            <span className={cn("font-semibold", r.cls)}>{formatPaise(r.v)}</span>
+            <span className={cn("figure text-sm", r.cls)}>{formatPaise(r.v)}</span>
           </div>
         ))}
         <div className="flex items-center justify-between border-t border-border pt-2">
           <span className="font-semibold">Site profit</span>
           <span
             className={cn(
-              "text-lg font-bold",
+              "figure text-lg",
               pnl.profitPaise >= 0 ? "text-green" : "text-red",
             )}
           >
@@ -68,8 +68,8 @@ export function OverviewTab({ site }: { site: SiteRow }) {
       </Card>
 
       {fullyPaid ? (
-        <Card className="flex items-center justify-between bg-green-soft">
-          <span className="font-semibold text-green">✓ Fully paid</span>
+        <Card className="flex items-center justify-between border-l-[3px] border-l-green bg-green-soft">
+          <span className="font-semibold text-green">Fully paid</span>
           {pnl.receivablePaise < 0 && (
             <span className="text-sm text-muted">
               Excess advance {formatPaise(-pnl.receivablePaise)}
@@ -147,7 +147,7 @@ function SettleCard({
         <div>
           <div className="font-semibold">Final settlement</div>
           <div className="text-sm text-muted">
-            Balance due: <span className="font-semibold text-amber">{formatPaise(balancePaise)}</span>
+            Balance due: <span className="figure text-amber">{formatPaise(balancePaise)}</span>
           </div>
         </div>
         {!open && (
@@ -184,7 +184,7 @@ function SettleCard({
           {err && <p className="text-sm text-red">{err}</p>}
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={settle.isPending}>
-              ✓ Confirm — {formatPaise(balancePaise)} received
+              Confirm — {formatPaise(balancePaise)} received
             </Button>
             <Button
               type="button"

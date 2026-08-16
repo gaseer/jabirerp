@@ -9,29 +9,77 @@ import {
 } from "@/domain/pnl";
 import { shopDuesTotalPaise } from "@/domain/shops";
 import { formatPaise } from "@/lib/money";
-import { Card } from "@/components/ui/card";
+import { Card, SectionHead } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { LedgerRowView } from "@/pages/Ledger";
 import { cn } from "@/lib/utils";
 
-function StatTile({
+/**
+ * The readout plate — the one navy surface in the content area, holding the
+ * only two numbers that change what the day looks like: what is owed to the
+ * business, and whether the work is making money.
+ */
+function Readout({
   label,
   value,
-  cls,
+  note,
+  tone,
   to,
 }: {
   label: string;
   value: string;
-  cls?: string;
-  to?: string;
+  note: string;
+  tone?: "loss";
+  to: string;
 }) {
-  const body = (
-    <Card className="h-full">
-      <div className="text-xs text-muted">{label}</div>
-      <div className={cn("truncate text-lg font-bold", cls)}>{value}</div>
-    </Card>
+  return (
+    <Link
+      to={to}
+      className="group block flex-1 px-5 py-5 transition-colors hover:bg-white/[0.06]"
+    >
+      <div className="label text-bus-ink">{label}</div>
+      <div
+        className={cn(
+          "figure mt-2 truncate text-[30px] leading-none",
+          tone === "loss" ? "text-red-on" : "text-white",
+        )}
+      >
+        {value}
+      </div>
+      <div className="mt-2 text-xs text-bus-ink">{note}</div>
+    </Link>
   );
-  return to ? <Link to={to}>{body}</Link> : body;
+}
+
+/**
+ * One line of the load schedule. A contractor reads these the way they read a
+ * circuit directory — down the left for the name, down the right for the
+ * figure — so the figures are mono and right-aligned and nothing sits between
+ * the two columns.
+ */
+function ScheduleRow({
+  name,
+  detail,
+  value,
+  cls,
+  to,
+}: {
+  name: string;
+  detail?: string;
+  value: string;
+  cls?: string;
+  to: string;
+}) {
+  return (
+    <Link
+      to={to}
+      className="-mx-2 flex items-baseline gap-3 rounded-sm px-2 py-2.5 transition-colors hover:bg-bg"
+    >
+      <span className="shrink-0 text-sm font-medium">{name}</span>
+      <span className="min-w-0 flex-1 truncate text-xs text-muted">{detail}</span>
+      <span className={cn("figure shrink-0 text-sm tabular-nums", cls)}>{value}</span>
+    </Link>
+  );
 }
 
 export function Dashboard() {
@@ -63,71 +111,106 @@ export function Dashboard() {
   const cash = bal?.cashPaise ?? 0;
   const bank = bal?.bankPaise ?? 0;
   const profit = pnl?.profitPaise ?? 0;
+  const income = pnl?.incomePaise ?? 0;
+  const margin = pnl?.marginPct ?? 0;
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-xl font-bold">Home</h2>
+    <div className="space-y-7">
+      <h2 className="text-xl">Home</h2>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatTile
+      <div className="flex flex-col divide-y divide-white/10 rounded bg-bus sm:flex-row sm:divide-x sm:divide-y-0">
+        <Readout
           label="To receive"
           value={formatPaise(receivable)}
-          cls="text-amber"
+          note={
+            activeSites === 1 ? "across 1 open site" : `across ${activeSites} open sites`
+          }
           to="/sites"
         />
-        <StatTile
-          label="Cash in hand"
-          value={formatPaise(cash)}
-          cls={cash < 0 ? "text-red" : undefined}
-          to="/ledger"
-        />
-        <StatTile
-          label="Bank balance"
-          value={formatPaise(bank)}
-          cls={bank < 0 ? "text-red" : undefined}
-          to="/ledger"
-        />
-        <StatTile label="Shop money held" value={formatPaise(shopDues)} to="/shops" />
-        <StatTile label="Active sites" value={String(activeSites)} cls="text-primary" to="/sites" />
-        <StatTile label="Workers due" value={String(workersDue)} to="/workers" />
-        <StatTile
+        <Readout
           label="Net profit"
           value={formatPaise(profit)}
-          cls={profit >= 0 ? "text-green" : "text-red"}
-          to="/reports"
-        />
-        <StatTile
-          label="Total billed"
-          value={formatPaise(pnl?.incomePaise ?? 0)}
+          note={income ? `${margin}% margin on ${formatPaise(income)} billed` : "Nothing billed yet"}
+          tone={profit < 0 ? "loss" : undefined}
           to="/reports"
         />
       </div>
 
       <div className="flex flex-wrap gap-2">
         <Button size="sm" onClick={() => navigate("/sites")}>
-          ＋ New site
+          New site
         </Button>
-        <Button size="sm" variant="soft" onClick={() => navigate("/workers")}>
-          ＋ Worker
+        <Button size="sm" variant="ghost" onClick={() => navigate("/workers")}>
+          Add worker
         </Button>
-        <Button size="sm" variant="soft" onClick={() => navigate("/ledger")}>
-          📒 View ledger
+        <Button size="sm" variant="ghost" onClick={() => navigate("/ledger")}>
+          Open ledger
         </Button>
       </div>
 
-      <Card className="space-y-1">
-        <div className="flex items-center justify-between">
-          <div className="font-semibold">Recent activity</div>
-          <Link to="/ledger" className="text-sm text-primary">
-            See all →
-          </Link>
+      {/* The load schedule: everything else the board is holding, one line each. */}
+      <Card className="space-y-0 p-4 pt-3">
+        <SectionHead
+          title="Where the money is"
+          action={<span className="label text-[10px]">Balance</span>}
+        />
+        <div className="divide-y divide-border">
+          <ScheduleRow
+            name="Cash in hand"
+            value={formatPaise(cash)}
+            cls={cash < 0 ? "text-red" : undefined}
+            to="/ledger"
+          />
+          <ScheduleRow
+            name="Bank balance"
+            value={formatPaise(bank)}
+            cls={bank < 0 ? "text-red" : undefined}
+            to="/ledger"
+          />
+          <ScheduleRow
+            name="Held at shops"
+            detail="Advances not yet settled"
+            value={formatPaise(shopDues)}
+            to="/shops"
+          />
+          <ScheduleRow
+            name="Billed to date"
+            detail="Bills and invoices, net of discount"
+            value={formatPaise(income)}
+            to="/reports"
+          />
+          <ScheduleRow
+            name="Open sites"
+            value={String(activeSites)}
+            cls="text-primary"
+            to="/sites"
+          />
+          <ScheduleRow
+            name="Workers owed"
+            detail={workersDue ? "Wages earned, not yet paid" : "Everyone settled"}
+            value={String(workersDue)}
+            cls={workersDue ? "text-red" : undefined}
+            to="/workers"
+          />
         </div>
+      </Card>
+
+      <Card className="p-4 pt-3">
+        <SectionHead
+          title="Recent activity"
+          action={
+            <Link to="/ledger" className="label text-[10px] text-primary hover:underline">
+              See all
+            </Link>
+          }
+        />
         {recent.length === 0 ? (
-          <p className="py-4 text-center text-sm text-muted">
-            No money movements yet. Record an advance or expense on a site.
+          <p className="py-6 text-center text-sm text-muted">
+            Nothing recorded yet. Add an advance or an expense on a site to start the
+            ledger.
           </p>
         ) : (
-          <div className="divide-y divide-border">
+          <div className="busbar mt-3">
             {recent.map((r) => (
               <LedgerRowView key={r.txn.id} row={r} />
             ))}

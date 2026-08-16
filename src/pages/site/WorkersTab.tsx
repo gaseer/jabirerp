@@ -16,10 +16,11 @@ import { formatPaise, paiseToRupees, toPaise } from "@/lib/money";
 import { formatDate, todayIso } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { useEntryMode } from "@/store/settings";
-import { Card } from "@/components/ui/card";
+import { Card, SectionHead } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Icon } from "@/components/Icon";
 import { Modal } from "@/components/ui/modal";
 import { EntryGrid } from "@/components/grid/EntryGrid";
 import { WageRoundEditor } from "@/components/WageRoundEditor";
@@ -215,7 +216,7 @@ export function WorkersTab({ site }: { site: SiteRow }) {
           size="sm"
           disabled={mark.isPending || previewHours <= 0}
         >
-          {editingId ? "✓ Save changes" : "✓ Mark attendance"}
+          {editingId ? "Save changes" : "Mark attendance"}
         </Button>
         {editingId && (
           <Button type="button" size="sm" variant="soft" onClick={cancelEdit}>
@@ -310,7 +311,7 @@ export function WorkersTab({ site }: { site: SiteRow }) {
           row instead of jumping up to the top of the page. */}
       {!editingId && (
         <Card className="space-y-3">
-          <div className="font-semibold">Mark attendance at {site.name}</div>
+          <SectionHead title={`Mark attendance at ${site.name}`} />
           {employees.length === 0 ? (
             <p className="text-sm text-muted">
               No workers yet — add them on the{" "}
@@ -331,7 +332,7 @@ export function WorkersTab({ site }: { site: SiteRow }) {
       </Modal>
 
       <Card className="space-y-3">
-        <div className="font-semibold">Workers on this site</div>
+        <SectionHead title="Workers on this site" />
         {byWorker.size === 0 ? (
           <p className="text-sm text-muted">No attendance recorded yet.</p>
         ) : (
@@ -346,20 +347,20 @@ export function WorkersTab({ site }: { site: SiteRow }) {
                   <div className="font-medium">{empName.get(empId) ?? "Unknown"}</div>
                   <div className="text-xs text-muted">{hoursLabel(agg.hours)} worked</div>
                 </div>
-                <div className="font-semibold">{formatPaise(agg.wagesPaise)}</div>
+                <div className="figure text-sm">{formatPaise(agg.wagesPaise)}</div>
               </Link>
             ))}
           </div>
         )}
         <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
           <span>Total wages (site)</span>
-          <span className="text-red">{formatPaise(totalWages)}</span>
+          <span className="figure text-red">{formatPaise(totalWages)}</span>
         </div>
       </Card>
 
       {attendance.length > 0 && (
         <Card className="space-y-3">
-          <div className="font-semibold">Shifts at this site</div>
+          <SectionHead title="Shifts at this site" />
           <div className="divide-y divide-border">
             {attendance.map((r) => (
               <div
@@ -377,7 +378,7 @@ export function WorkersTab({ site }: { site: SiteRow }) {
                     {r.status !== "approved" && (
                       <span
                         className={cn(
-                          "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",
+                          "label shrink-0 rounded-sm px-1.5 py-0.5",
                           r.status === "pending"
                             ? "bg-amber-soft text-amber"
                             : "bg-red-soft text-red",
@@ -392,13 +393,13 @@ export function WorkersTab({ site }: { site: SiteRow }) {
                     {timeRangeLabel(r.start_time, r.end_time)}
                   </div>
                 </div>
-                <div className="font-semibold">{formatPaise(r.wage_paise)}</div>
+                <div className="figure text-sm">{formatPaise(r.wage_paise)}</div>
                 <button
-                  className="text-primary"
+                  className="text-muted transition-colors hover:text-bus"
                   aria-label="Edit attendance"
                   onClick={() => startEdit(r)}
                 >
-                  ✏️
+                  <Icon name="edit" className="h-4 w-4" />
                 </button>
               </div>
             ))}

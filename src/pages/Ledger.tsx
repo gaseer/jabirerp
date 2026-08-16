@@ -14,29 +14,27 @@ import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { SearchInput } from "@/components/SearchInput";
 import { cn } from "@/lib/utils";
 
-/** One ledger row — shared with the Dashboard's recent-activity list. */
+/**
+ * One ledger row — shared with the Dashboard's recent-activity list.
+ *
+ * Direction is carried by the tap stub on the busbar (earth green in, trip red
+ * out), so the row no longer needs an IN/OUT badge taking 32px of a phone's
+ * width. Render these inside a `.busbar` container.
+ */
 export function LedgerRowView({ row }: { row: LedgerRow }) {
   const isIn = row.direction === "in";
   return (
-    <div className="flex items-center gap-2 py-2">
-      <span
-        className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold",
-          isIn ? "bg-green-soft text-green" : "bg-red-soft text-red",
-        )}
-      >
-        {isIn ? "IN" : "OUT"}
-      </span>
+    <div className={cn("tap flex items-baseline gap-3 py-2.5", isIn ? "tap-in" : "tap-out")}>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium">{row.refLabel}</div>
-        <div className="flex items-center gap-2 text-xs text-muted">
+        <div className="mt-0.5 flex items-center gap-2 text-xs text-muted">
           <span>{row.typeLabel}</span>
-          <span>·</span>
-          <span>{formatDate(row.txn.txn_date)}</span>
+          <span aria-hidden="true">·</span>
+          <span className="money">{formatDate(row.txn.txn_date)}</span>
           <ModeTag mode={row.txn.mode} />
         </div>
       </div>
-      <div className={cn("font-semibold", isIn ? "text-green" : "text-red")}>
+      <div className={cn("figure shrink-0 text-sm", isIn ? "text-green" : "text-red")}>
         {isIn ? "+" : "−"}
         {formatPaise(row.txn.amount_paise)}
       </div>
@@ -82,26 +80,28 @@ export function Ledger() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold">Ledger</h2>
+      <h2 className="text-xl">Ledger</h2>
 
+      {/* Balances stay unfiltered, so they read as the board's own state
+          rather than a total of whatever the filters currently show. */}
       <div className="grid grid-cols-2 gap-3">
         <Card>
-          <div className="text-sm text-muted">💵 Cash in hand</div>
+          <div className="label text-cash">Cash in hand</div>
           <div
             className={cn(
-              "text-xl font-bold",
-              (bal?.cashPaise ?? 0) < 0 && "text-red",
+              "figure mt-1.5 truncate text-xl",
+              (bal?.cashPaise ?? 0) < 0 ? "text-red" : "text-bus",
             )}
           >
             {formatPaise(bal?.cashPaise ?? 0)}
           </div>
         </Card>
         <Card>
-          <div className="text-sm text-muted">🏦 Bank balance</div>
+          <div className="label text-bank">Bank balance</div>
           <div
             className={cn(
-              "text-xl font-bold",
-              (bal?.bankPaise ?? 0) < 0 && "text-red",
+              "figure mt-1.5 truncate text-xl",
+              (bal?.bankPaise ?? 0) < 0 ? "text-red" : "text-bus",
             )}
           >
             {formatPaise(bal?.bankPaise ?? 0)}
@@ -147,7 +147,7 @@ export function Ledger() {
               setRange({});
             }}
           >
-            ✕ Clear all filters
+            Clear all filters
           </Button>
         )}
       </Card>
@@ -158,7 +158,7 @@ export function Ledger() {
             {filtersActive ? "No transactions match the filters." : "No transactions yet."}
           </p>
         ) : (
-          <div className="divide-y divide-border">
+          <div className="busbar">
             {visible.map((r) => (
               <LedgerRowView key={r.txn.id} row={r} />
             ))}

@@ -75,8 +75,8 @@ export function EntryGrid({
         {saving
           ? "Saving…"
           : valid.length > 0
-            ? `✓ ${saveLabel} (${valid.length})`
-            : `✓ ${saveLabel}`}
+            ? `${saveLabel} (${valid.length})`
+            : saveLabel}
       </Button>
     </div>
   );

@@ -15,7 +15,7 @@ import { shareInvoicePdf } from "@/lib/pdf";
 import { shareInvoiceXlsx } from "@/lib/xlsx";
 import { formatPaise, toPaise } from "@/lib/money";
 import { InvoiceGrid } from "@/components/grid/InvoiceGrid";
-import { Card } from "@/components/ui/card";
+import { Card, SectionHead } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -138,7 +138,7 @@ export function InvoiceEditor() {
       <Card className="space-y-3">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <h2 className="text-xl font-bold">Invoice</h2>
+            <h2 className="text-xl">Invoice</h2>
             <p className="text-sm text-muted">
               {site.name}
               {site.location ? ` · ${site.location}` : ""}
@@ -150,12 +150,12 @@ export function InvoiceEditor() {
               saveHeader.mutate({ status: issued ? "draft" : "final" })
             }
             className={cn(
-              "rounded-sm px-2 py-1 text-xs font-semibold",
+              "label rounded-sm px-1.5 py-1",
               issued ? "bg-green-soft text-green" : "bg-border/50 text-muted",
             )}
             title="Tap to switch between Draft and Issued"
           >
-            {issued ? "✓ Issued" : "Draft"}
+            {issued ? "Issued" : "Draft"}
           </button>
         </div>
 
@@ -190,22 +190,24 @@ export function InvoiceEditor() {
       </Card>
 
       <Card className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="font-semibold">Works &amp; items</span>
-          {bundle.quotationId && (
-            <Button
-              size="sm"
-              variant="soft"
-              disabled={importQuotation.isPending}
-              onClick={() => {
-                if (confirm("Copy every line from this site's quotation into the invoice?"))
-                  importQuotation.mutate();
-              }}
-            >
-              ↓ Pull in quotation lines
-            </Button>
-          )}
-        </div>
+        <SectionHead
+          title="Works &amp; items"
+          action={
+            bundle.quotationId && (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={importQuotation.isPending}
+                onClick={() => {
+                  if (confirm("Copy every line from this site's quotation into the invoice?"))
+                    importQuotation.mutate();
+                }}
+              >
+                Pull in quotation lines
+              </Button>
+            )
+          }
+        />
 
         <InvoiceGrid
           documentId={doc.id}
@@ -224,7 +226,7 @@ export function InvoiceEditor() {
       <Card className="space-y-3">
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm text-muted">Subtotal</span>
-          <span className="font-medium tabular-nums">
+          <span className="figure text-sm">
             {formatPaise(totals.subtotalPaise)}
           </span>
         </div>
@@ -252,11 +254,11 @@ export function InvoiceEditor() {
         </label>
 
         <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-          <Button size="sm" variant="soft" disabled={items.length === 0} onClick={sharePdf}>
-            📄 Share Invoice PDF
+          <Button size="sm" variant="ghost" disabled={items.length === 0} onClick={sharePdf}>
+            Invoice PDF
           </Button>
-          <Button size="sm" variant="soft" disabled={items.length === 0} onClick={shareExcel}>
-            📊 Share Invoice Excel
+          <Button size="sm" variant="ghost" disabled={items.length === 0} onClick={shareExcel}>
+            Invoice Excel
           </Button>
           <Button
             size="sm"
@@ -276,7 +278,7 @@ export function InvoiceEditor() {
         Sits above the mobile bottom nav (64px + safe area) and clears the
         desktop sidebar (220px).
       */}
-      <div className="fixed bottom-[calc(64px+env(safe-area-inset-bottom))] left-0 right-0 z-20 border-t border-border bg-surface/95 backdrop-blur md:bottom-0 md:left-[220px]">
+      <div className="fixed bottom-[calc(66px+env(safe-area-inset-bottom))] left-0 right-0 z-20 border-t border-border bg-surface/95 backdrop-blur md:bottom-0 md:left-[232px]">
         <div className="mx-auto flex max-w-[920px] items-center justify-between gap-3 px-4 py-3">
           <div className="text-xs text-muted">
             {items.length} {items.length === 1 ? "line" : "lines"}
@@ -284,7 +286,7 @@ export function InvoiceEditor() {
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-sm text-muted">Total</span>
-            <span className="text-xl font-bold tabular-nums">
+            <span className="figure text-xl">
               {formatPaise(totals.totalPaise)}
             </span>
           </div>

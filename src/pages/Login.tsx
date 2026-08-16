@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { BrandMark } from "@/components/BrandMark";
+import { Icon } from "@/components/Icon";
 import { WORKER_LOGIN_PATH } from "@/lib/routes";
 
 export function Login() {
@@ -101,10 +102,12 @@ export function Login() {
           aria-hidden
           className="grid h-11 w-11 shrink-0 place-items-center rounded-sm bg-primary text-white transition group-hover:bg-white group-hover:text-primary"
         >
-          <HelmetIcon />
+          <Icon name="workers" className="h-6 w-6" />
         </span>
         <span className="min-w-0 leading-tight">
-          <span className="block text-base font-bold">I'm a worker</span>
+          <span className="block font-cond text-base font-bold uppercase tracking-[0.02em]">
+            I'm a worker
+          </span>
           <span className="block text-xs opacity-80">Sign in with your name and phone</span>
         </span>
         <span aria-hidden className="ml-auto pr-1 text-xl font-bold">
@@ -112,15 +115,5 @@ export function Login() {
         </span>
       </Link>
     </div>
-  );
-}
-
-/** Hard hat — the worker sign-in marker. Inline: the app ships no icon set. */
-function HelmetIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor" aria-hidden>
-      <path d="M12 3a1 1 0 0 0-1 1v2.26A6.99 6.99 0 0 0 6 13v2h12v-2a6.99 6.99 0 0 0-5-6.74V4a1 1 0 0 0-1-1Z" />
-      <path d="M4 16.5A1.5 1.5 0 0 1 5.5 15h13a1.5 1.5 0 0 1 0 3h-13A1.5 1.5 0 0 1 4 16.5Z" />
-    </svg>
   );
 }

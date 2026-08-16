@@ -46,7 +46,7 @@ export function SiteDetail() {
       ) : site ? (
         <>
           <div>
-            <h2 className="text-xl font-bold">{site.name}</h2>
+            <h2 className="text-xl">{site.name}</h2>
             <p className="text-sm text-muted">
               {site.work_type}
               {site.location ? ` · ${site.location}` : ""}

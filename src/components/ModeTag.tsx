@@ -6,8 +6,8 @@ export function ModeTag({ mode }: { mode: TxnMode }) {
   return (
     <span
       className={cn(
-        "rounded-full px-2 py-0.5 text-[11px] font-semibold",
-        mode === "bank" ? "bg-primary-soft text-primary" : "bg-green-soft text-green",
+        "label rounded-sm px-1.5 py-0.5 text-[9.5px]",
+        mode === "bank" ? "bg-bank-soft text-bank" : "bg-cash-soft text-cash",
       )}
     >
       {mode === "bank" ? "Bank" : "Cash"}

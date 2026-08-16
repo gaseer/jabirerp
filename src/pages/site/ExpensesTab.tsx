@@ -12,10 +12,11 @@ import {
 import { formatPaise, toPaise } from "@/lib/money";
 import { formatDate, todayIso, type DateRange } from "@/lib/dates";
 import { useEntryMode } from "@/store/settings";
-import { Card } from "@/components/ui/card";
+import { Card, SectionHead } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Icon } from "@/components/Icon";
 import { ModeTag } from "@/components/ModeTag";
 import { ModeToggle } from "@/components/ModeToggle";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
@@ -100,7 +101,7 @@ export function ExpensesTab({ site }: { site: SiteRow }) {
   return (
     <div className="space-y-3">
       <Card className="space-y-3">
-        <div className="font-semibold">Record expense{excel ? "s" : ""}</div>
+        <SectionHead title={`Record expense${excel ? "s" : ""}`} />
         {excel ? (
           <EntryGrid
             columns={EXPENSE_COLUMNS}
@@ -136,29 +137,31 @@ export function ExpensesTab({ site }: { site: SiteRow }) {
       </Card>
 
       <Card className="space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="font-semibold">Expenses</div>
-          <Select
-            value={catFilter}
-            onChange={(e) => setCatFilter(e.target.value)}
-            className="h-9 w-auto text-sm"
-          >
-            <option value="">All categories</option>
-            {EXPENSE_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </Select>
-        </div>
+        <SectionHead
+          title="Expenses"
+          action={
+            <Select
+              value={catFilter}
+              onChange={(e) => setCatFilter(e.target.value)}
+              className="h-9 w-auto text-sm"
+            >
+              <option value="">All categories</option>
+              {EXPENSE_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </Select>
+          }
+        />
         <DateRangeFilter range={range} onChange={setRange} />
 
         {visible.length === 0 ? (
           <p className="text-sm text-muted">No expenses in this period.</p>
         ) : (
-          <div className="divide-y divide-border">
+          <div className="busbar">
             {visible.map((t) => (
-              <div key={t.id} className="flex items-center gap-2 py-2">
+              <div key={t.id} className="tap tap-out flex items-center gap-2 py-2.5">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">{t.category}</span>
@@ -169,16 +172,16 @@ export function ExpensesTab({ site }: { site: SiteRow }) {
                     {t.note ? ` · ${t.note}` : ""}
                   </div>
                 </div>
-                <div className="font-semibold text-red">{formatPaise(t.amount_paise)}</div>
+                <div className="figure text-sm text-red">{formatPaise(t.amount_paise)}</div>
                 <button
-                  className="text-red"
+                  className="text-muted transition-colors hover:text-red"
                   aria-label="Delete expense"
                   onClick={() => {
                     if (confirm("Delete this expense? It will vanish from all totals."))
                       remove.mutate(t.id);
                   }}
                 >
-                  🗑
+                  <Icon name="trash" className="h-4 w-4" />
                 </button>
               </div>
             ))}
@@ -187,7 +190,7 @@ export function ExpensesTab({ site }: { site: SiteRow }) {
 
         <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
           <span>Total (period{catFilter ? ` · ${catFilter}` : ""})</span>
-          <span className="text-red">{formatPaise(sumPaise(visible))}</span>
+          <span className="figure text-red">{formatPaise(sumPaise(visible))}</span>
         </div>
       </Card>
     </div>
@@ -230,7 +233,7 @@ export function ExpensesTab({ site }: { site: SiteRow }) {
           <ModeToggle mode={form.mode} onChange={(mode) => setForm({ ...form, mode })} />
           {err && <p className="text-sm text-red">{err}</p>}
           <Button type="submit" size="sm" disabled={add.isPending}>
-            ＋ Add expense
+            Add expense
           </Button>
         </form>
     );

@@ -46,8 +46,9 @@ export default defineConfig(({ command, mode }) => {
           // Home-screen label — must stay short, the full name is truncated there.
           short_name: "Power Plus",
           description: "Power Plus Electrical and Plumbing Works — offline-first contractor ERP",
-          theme_color: "#2563eb",
-          background_color: "#f4f6f9",
+          // Matches the navy app chrome and the board ground it frames.
+          theme_color: "#001d4c",
+          background_color: "#e7ebf1",
           display: "standalone",
           start_url: "/",
           icons: [

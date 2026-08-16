@@ -49,7 +49,7 @@ export function Modal({
       role="dialog"
       aria-modal="true"
     >
-      <div className="modal-backdrop absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="modal-backdrop absolute inset-0 bg-bus/55" onClick={onClose} />
       <div
         ref={panelRef}
         className={cn(
@@ -59,13 +59,13 @@ export function Modal({
         )}
       >
         {title != null && (
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <div className="text-base font-semibold">{title}</div>
+          <div className="rule mb-4 flex items-center justify-between gap-2 pb-2">
+            <div className="label text-[13px] text-bus">{title}</div>
             <button
               type="button"
               onClick={onClose}
               aria-label="Close"
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-sm text-muted hover:bg-border/50"
+              className="-mr-1 grid h-8 w-8 shrink-0 place-items-center rounded-sm text-muted transition-colors hover:bg-bg hover:text-bus"
             >
               ✕
             </button>

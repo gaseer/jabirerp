@@ -5,11 +5,12 @@ import { siteRepo } from "@/repo/repos";
 import { sync } from "@/repo/SupabaseSync";
 import type { SiteRow, SiteStatus, WorkType } from "@/lib/db";
 import { matchesQuery } from "@/lib/search";
-import { Card } from "@/components/ui/card";
+import { Card, SectionHead } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { SearchInput } from "@/components/SearchInput";
+import { Icon } from "@/components/Icon";
 
 type SiteSort = "recent" | "name" | "active";
 const SORT_LABELS: Record<SiteSort, string> = {
@@ -118,16 +119,16 @@ export function Sites() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold">Sites</h2>
+        <h2 className="text-xl">Sites</h2>
         <Button size="sm" onClick={() => setForm({ ...empty })}>
-          ＋ Add site
+          Add site
         </Button>
       </div>
 
       {form && (
         <Card>
           <form onSubmit={submit} className="space-y-3">
-            <div className="font-semibold">{form.id ? "Edit site" : "New site"}</div>
+            <SectionHead title={form.id ? "Edit site" : "New site"} />
             <Input
               placeholder="Customer name *"
               value={form.name}
@@ -186,8 +187,8 @@ export function Sites() {
 
       {sites.length === 0 && !form ? (
         <Card className="flex flex-col items-center gap-2 py-10 text-center text-muted">
-          <span className="text-4xl">📍</span>
-          <p>No sites yet. Tap ＋ to add your first job.</p>
+          <Icon name="sites" className="h-9 w-9" />
+          <p>No sites yet. Add your first job above.</p>
         </Card>
       ) : (
         <>
@@ -242,23 +243,27 @@ export function Sites() {
               <span
                 className={
                   s.status === "Active"
-                    ? "rounded-full bg-green-soft px-2 py-0.5 text-xs font-semibold text-green"
-                    : "rounded-full bg-border px-2 py-0.5 text-xs font-semibold text-muted"
+                    ? "label rounded-sm bg-green-soft px-1.5 py-0.5 text-green"
+                    : "label rounded-sm bg-border px-1.5 py-0.5 text-muted"
                 }
               >
                 {s.status}
               </span>
-              <button className="text-muted" aria-label="Edit site" onClick={() => edit(s)}>
-                ✎
+              <button
+                className="text-muted transition-colors hover:text-bus"
+                aria-label="Edit site"
+                onClick={() => edit(s)}
+              >
+                <Icon name="edit" className="h-4 w-4" />
               </button>
               <button
-                className="text-red"
+                className="text-muted transition-colors hover:text-red"
                 aria-label="Delete site"
                 onClick={() => {
                   if (confirm(`Delete "${s.name}"?`)) remove.mutate(s.id);
                 }}
               >
-                🗑
+                <Icon name="trash" className="h-4 w-4" />
               </button>
             </Card>
           ))}

@@ -47,7 +47,9 @@ export function WorkerLogin() {
         {/* Names the screen loudly, so a worker knows at a glance they are on
             the right one and not the contractor's. */}
         <div className="mb-4 rounded-sm bg-primary-soft px-3 py-2 text-center">
-          <p className="text-base font-bold text-primary">Worker sign-in</p>
+          <p className="font-cond text-base font-bold uppercase tracking-[0.02em] text-primary">
+            Worker sign-in
+          </p>
           <p className="text-xs text-primary opacity-80">Enter your name and phone</p>
         </div>
         <form onSubmit={submit} className="space-y-3">

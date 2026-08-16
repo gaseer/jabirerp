@@ -50,13 +50,13 @@ export function InvoicesTab({ site }: { site: SiteRow }) {
 
   return (
     <Card className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
+      <div className="rule flex items-end justify-between gap-2 pb-1.5">
         <div>
-          <span className="font-semibold">Invoices</span>
-          <p className="text-xs text-muted">Bill works &amp; items directly.</p>
+          <h3 className="label text-[12px] text-bus">Invoices</h3>
+          <p className="mt-1 text-xs text-muted">Bill works &amp; items directly.</p>
         </div>
         <Button size="sm" disabled={create.isPending} onClick={() => create.mutate()}>
-          ＋ New invoice
+          New invoice
         </Button>
       </div>
 
@@ -102,7 +102,7 @@ export function InvoicesTab({ site }: { site: SiteRow }) {
                       .join(" · ")}
                   </div>
                 </div>
-                <div className="shrink-0 font-semibold tabular-nums">
+                <div className="figure shrink-0 text-sm">
                   {formatPaise(invoiceTotalPaise(lines, doc.discount_paise))}
                 </div>
                 <span className="shrink-0 text-muted">›</span>
@@ -111,7 +111,7 @@ export function InvoicesTab({ site }: { site: SiteRow }) {
           </div>
           <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
             <span>Invoiced total</span>
-            <span className="tabular-nums">{formatPaise(total)}</span>
+            <span className="figure">{formatPaise(total)}</span>
           </div>
         </>
       )}

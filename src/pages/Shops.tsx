@@ -17,10 +17,11 @@ import { formatPaise, toPaise } from "@/lib/money";
 import { formatDate, todayIso, type DateRange } from "@/lib/dates";
 import { matchesQuery } from "@/lib/search";
 import { useEntryMode } from "@/store/settings";
-import { Card } from "@/components/ui/card";
+import { Card, SectionHead } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Icon } from "@/components/Icon";
 import { ModeTag } from "@/components/ModeTag";
 import { ModeToggle } from "@/components/ModeToggle";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
@@ -150,28 +151,30 @@ export function Shops() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold">Shops</h2>
+        <h2 className="text-xl">Shops</h2>
         <Button
           size="sm"
           onClick={() =>
             excel ? setBatch((v) => !v) : setNewShop({ name: "", phone: "", siteId: "" })
           }
         >
-          ＋ Add shop{excel ? "s" : ""}
+          Add shop{excel ? "s" : ""}
         </Button>
       </div>
 
       {excel && batch && !newShop && (
         <Card className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="font-semibold">Add shops</div>
-            <button
-              className="text-sm text-muted hover:text-text"
-              onClick={() => setBatch(false)}
-            >
-              Close
-            </button>
-          </div>
+          <SectionHead
+            title="Add shops"
+            action={
+              <button
+                className="label text-muted hover:text-text"
+                onClick={() => setBatch(false)}
+              >
+                Close
+              </button>
+            }
+          />
           <EntryGrid
             columns={[
               { key: "name", label: "Shop name", type: "text" },
@@ -206,17 +209,17 @@ export function Shops() {
       )}
 
       <Card>
-        <div className="text-sm text-muted">Total shop money you hold</div>
-        <div className={cn("text-xl font-bold", duesTotal > 0 && "text-amber")}>
+        <div className="label text-muted">Total shop money you hold</div>
+        <div className={cn("figure mt-1.5 text-xl", duesTotal > 0 && "text-amber")}>
           {formatPaise(duesTotal)}
         </div>
-        <div className="text-xs text-muted">Pass-through — excluded from profit.</div>
+        <div className="mt-1 text-xs text-muted">Pass-through — excluded from profit.</div>
       </Card>
 
       {newShop && (
         <Card>
           <form onSubmit={submitNew} className="space-y-3">
-            <div className="font-semibold">New shop</div>
+            <SectionHead title="New shop" />
             <Input
               placeholder="Shop name *"
               value={newShop.name}
@@ -257,7 +260,7 @@ export function Shops() {
 
       {shops.length === 0 && !newShop ? (
         <Card className="flex flex-col items-center gap-2 py-10 text-center text-muted">
-          <span className="text-4xl">🏪</span>
+          <Icon name="shops" className="h-9 w-9" />
           <p>No shops yet. Track material-shop dues you hold for customers.</p>
         </Card>
       ) : (
@@ -430,14 +433,18 @@ function ShopCard({
         </button>
         <span
           className={cn(
-            "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",
+            "label shrink-0 rounded-sm px-1.5 py-0.5",
             pending > 0 ? "bg-amber-soft text-amber" : "bg-green-soft text-green",
           )}
         >
           {pending > 0 ? "Pending" : "Cleared"}
         </span>
-        <button className="text-red" aria-label="Delete shop" onClick={onDelete}>
-          🗑
+        <button
+          className="text-muted transition-colors hover:text-red"
+          aria-label="Delete shop"
+          onClick={onDelete}
+        >
+          <Icon name="trash" className="h-4 w-4" />
         </button>
       </div>
 
@@ -445,8 +452,12 @@ function ShopCard({
         <div className="space-y-3 border-t border-border pt-3">
           <div className="truncate text-sm text-muted">
             {siteName ? (
-              <Link to={`/sites/${shop.site_id}`} className="text-primary">
-                📍 {siteName}
+              <Link
+                to={`/sites/${shop.site_id}`}
+                className="inline-flex items-center gap-1 text-primary"
+              >
+                <Icon name="sites" className="h-3.5 w-3.5 shrink-0" />
+                {siteName}
               </Link>
             ) : (
               "No site linked"
@@ -457,53 +468,58 @@ function ShopCard({
           <div className="grid grid-cols-3 gap-2 text-center">
             <div>
               <div className="text-xs text-muted">Received</div>
-              <div className="font-semibold text-green">
+              <div className="figure text-sm text-green">
                 {formatPaise(figures?.receivedPaise ?? 0)}
               </div>
             </div>
             <div>
               <div className="text-xs text-muted">Paid</div>
-              <div className="font-semibold text-red">
+              <div className="figure text-sm text-red">
                 {formatPaise(figures?.paidPaise ?? 0)}
               </div>
             </div>
             <div>
               <div className="text-xs text-muted">Holding</div>
-              <div className={cn("font-semibold", pending > 0 && "text-amber")}>
+              <div className={cn("figure text-sm", pending > 0 && "text-amber")}>
                 {formatPaise(pending)}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-sm font-semibold">Transactions</div>
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="soft"
-                disabled={entries.length === 0}
-                onClick={sharePdf}
-              >
-                📄 PDF
-              </Button>
-              <Button
-                size="sm"
-                variant="soft"
-                disabled={entries.length === 0}
-                onClick={shareExcel}
-              >
-                📊 Excel
-              </Button>
-            </div>
-          </div>
+          <SectionHead
+            title="Transactions"
+            action={
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={entries.length === 0}
+                  onClick={sharePdf}
+                >
+                  PDF
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={entries.length === 0}
+                  onClick={shareExcel}
+                >
+                  Excel
+                </Button>
+              </div>
+            }
+          />
           <DateRangeFilter range={range} onChange={setRange} />
 
           {entries.length === 0 ? (
             <p className="text-sm text-muted">No transactions in this period.</p>
           ) : (
-            <div className="divide-y divide-border">
+            <div className="busbar">
               {entries.map((e) => (
-                <div key={e.txn.id} className="flex items-center gap-2 py-2">
+                <div
+                  key={e.txn.id}
+                  className={cn("tap flex items-center gap-2 py-2.5", e.direction === "in" ? "tap-in" : "tap-out")}
+                >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="text-sm">{formatDate(e.txn.txn_date)}</span>
@@ -516,25 +532,25 @@ function ShopCard({
                   <div className="shrink-0 text-right">
                     <div
                       className={cn(
-                        "font-semibold tabular-nums",
+                        "figure text-sm",
                         e.direction === "in" ? "text-green" : "text-red",
                       )}
                     >
                       {e.direction === "in" ? "+" : "−"} {formatPaise(e.txn.amount_paise)}
                     </div>
-                    <div className="text-xs text-muted tabular-nums">
+                    <div className="figure text-xs text-muted">
                       {formatPaise(e.holdingAfterPaise)}
                     </div>
                   </div>
                   <button
-                    className="text-red"
+                    className="text-muted transition-colors hover:text-red"
                     aria-label="Delete transaction"
                     onClick={() => {
                       if (confirm("Delete this transaction? It will vanish from all totals."))
                         removeTxn.mutate(e.txn.id);
                     }}
                   >
-                    🗑
+                    <Icon name="trash" className="h-4 w-4" />
                   </button>
                 </div>
               ))}
@@ -546,14 +562,14 @@ function ShopCard({
               {range.from && (
                 <div className="flex items-center justify-between text-muted">
                   <span>Opening holding</span>
-                  <span className="tabular-nums">
+                  <span className="figure">
                     {formatPaise(ledger.openingHoldingPaise)}
                   </span>
                 </div>
               )}
               <div className="flex items-center justify-between text-muted">
                 <span>Received / paid this period</span>
-                <span className="tabular-nums">
+                <span className="figure">
                   <span className="text-green">
                     {formatPaise(ledger.periodReceivedPaise)}
                   </span>{" "}
@@ -563,7 +579,7 @@ function ShopCard({
               </div>
               <div className="flex items-center justify-between font-semibold">
                 <span>Holding</span>
-                <span className={cn("tabular-nums", pending > 0 && "text-amber")}>
+                <span className={cn("figure", pending > 0 && "text-amber")}>
                   {formatPaise(ledger.closingHoldingPaise)}
                 </span>
               </div>
@@ -578,9 +594,9 @@ function ShopCard({
               }}
               className="space-y-2 border-t border-border pt-3"
             >
-              <div className="text-sm font-semibold">
-                {form.type === "shop_in" ? "Money received (to hold)" : "Pay shop"}
-              </div>
+              <SectionHead
+                title={form.type === "shop_in" ? "Money received (to hold)" : "Pay shop"}
+              />
               <div className="grid grid-cols-2 gap-2">
                 <Input
                   placeholder="Amount ₹ *"
@@ -613,11 +629,11 @@ function ShopCard({
             </form>
           ) : (
             <div className="flex gap-2 border-t border-border pt-3">
-              <Button size="sm" variant="soft" onClick={() => openForm("shop_in")}>
-                ＋ Received
+              <Button size="sm" variant="ghost" onClick={() => openForm("shop_in")}>
+                Received
               </Button>
-              <Button size="sm" variant="soft" onClick={() => openForm("shop_out")}>
-                → Pay shop
+              <Button size="sm" variant="ghost" onClick={() => openForm("shop_out")}>
+                Pay shop
               </Button>
             </div>
           )}

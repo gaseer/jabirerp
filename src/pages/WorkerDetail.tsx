@@ -26,10 +26,11 @@ import { formatPaise, paiseToRupees, toPaise } from "@/lib/money";
 import { WageRoundEditor } from "@/components/WageRoundEditor";
 import { formatDate, todayIso, type DateRange } from "@/lib/dates";
 import { useEntryMode } from "@/store/settings";
-import { Card } from "@/components/ui/card";
+import { Card, SectionHead } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Icon } from "@/components/Icon";
 import { Modal } from "@/components/ui/modal";
 import { ModeTag } from "@/components/ModeTag";
 import { ModeToggle } from "@/components/ModeToggle";
@@ -47,7 +48,7 @@ function AttendanceStatusPill({ status }: { status: AttendanceStatus }) {
   return (
     <span
       className={cn(
-        "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",
+        "label shrink-0 rounded-sm px-1.5 py-0.5",
         status === "pending" ? "bg-amber-soft text-amber" : "bg-red-soft text-red",
       )}
     >
@@ -87,7 +88,7 @@ export function WorkerDetail() {
       ) : worker ? (
         <>
           <div>
-            <h2 className="text-xl font-bold">{worker.name}</h2>
+            <h2 className="text-xl">{worker.name}</h2>
             <p className="text-sm text-muted">
               {worker.role} · {formatPaise(worker.hourly_wage_paise)}/hr
               {worker.phone ? ` · ${worker.phone}` : ""}
@@ -316,7 +317,7 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
       {err && <p className="text-sm text-red">{err}</p>}
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={mark.isPending || previewHours <= 0}>
-          {editingId ? "✓ Save changes" : "✓ Mark attendance"}
+          {editingId ? "Save changes" : "Mark attendance"}
         </Button>
         {editingId && (
           <Button type="button" size="sm" variant="soft" onClick={cancelEdit}>
@@ -407,7 +408,7 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
           tapped entry instead of jumping to the top of a long history. */}
       {!editingId && (
         <Card className="space-y-3">
-          <div className="font-semibold">Mark attendance</div>
+          <SectionHead title="Mark attendance" />
           {excel ? attendanceGrid : shiftForm}
         </Card>
       )}
@@ -449,7 +450,7 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
                       })
                     }
                   >
-                    ✓ Approve
+                    Approve
                   </Button>
                   <Button size="sm" variant="soft" onClick={() => setApprovingId(null)}>
                     Cancel
@@ -461,7 +462,7 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
       </Modal>
 
       <Card className="space-y-3">
-        <div className="font-semibold">Attendance history</div>
+        <SectionHead title="Attendance history" />
         <DateRangeFilter range={range} onChange={setRange} />
         {rows.length === 0 ? (
           <p className="text-sm text-muted">No attendance in this period.</p>
@@ -487,43 +488,43 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
                     {siteName.get(r.site_id) ?? "Unknown site"}
                   </div>
                 </div>
-                <div className="font-semibold">{formatPaise(r.wage_paise)}</div>
+                <div className="figure text-sm">{formatPaise(r.wage_paise)}</div>
                 {r.status === "pending" && (
                   <>
                     <button
-                      className="text-green"
+                      className="text-muted transition-colors hover:text-green"
                       aria-label="Approve attendance"
                       onClick={() => {
                         setApprovingId(r.id);
                         setApproveWageOverride("");
                       }}
                     >
-                      ✓
+                      <Icon name="check" className="h-4 w-4" />
                     </button>
                     <button
-                      className="text-red"
+                      className="text-muted transition-colors hover:text-red"
                       aria-label="Reject attendance"
                       onClick={() => reject.mutate(r.id)}
                     >
-                      ✕
+                      <Icon name="close" className="h-4 w-4" />
                     </button>
                   </>
                 )}
                 <button
-                  className="text-primary"
+                  className="text-muted transition-colors hover:text-bus"
                   aria-label="Edit attendance"
                   onClick={() => startEdit(r)}
                 >
-                  ✏️
+                  <Icon name="edit" className="h-4 w-4" />
                 </button>
                 <button
-                  className="text-red"
+                  className="text-muted transition-colors hover:text-red"
                   aria-label="Delete attendance"
                   onClick={() => {
                     if (confirm("Delete this attendance entry?")) remove.mutate(r.id);
                   }}
                 >
-                  🗑
+                  <Icon name="trash" className="h-4 w-4" />
                 </button>
               </div>
             ))}
@@ -531,7 +532,7 @@ function AttendanceTab({ worker }: { worker: EmployeeRow }) {
         )}
         <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
           <span>Wages (period, approved only)</span>
-          <span>
+          <span className="figure">
             {formatPaise(
               rows.filter((r) => r.status === "approved").reduce((s, r) => s + r.wage_paise, 0),
             )}
@@ -600,7 +601,7 @@ function PaymentsTab({ worker }: { worker: EmployeeRow }) {
   return (
     <div className="space-y-3">
       <Card className="space-y-3">
-        <div className="font-semibold">Record payment{excel ? "s" : ""}</div>
+        <SectionHead title={`Record payment${excel ? "s" : ""}`} />
         <p className="text-xs text-muted">
           Advance or settlement — both are the same payment; the balance works
           itself out.
@@ -651,21 +652,21 @@ function PaymentsTab({ worker }: { worker: EmployeeRow }) {
             />
             {err && <p className="text-sm text-red">{err}</p>}
             <Button type="submit" size="sm" disabled={add.isPending}>
-              ＋ Add payment
+              Add payment
             </Button>
           </form>
         )}
       </Card>
 
       <Card className="space-y-3">
-        <div className="font-semibold">Payment history</div>
+        <SectionHead title="Payment history" />
         <DateRangeFilter range={range} onChange={setRange} />
         {txns.length === 0 ? (
           <p className="text-sm text-muted">No payments in this period.</p>
         ) : (
-          <div className="divide-y divide-border">
+          <div className="busbar">
             {txns.map((t) => (
-              <div key={t.id} className="flex items-center gap-2 py-2">
+              <div key={t.id} className="tap tap-out flex items-center gap-2 py-2.5">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-sm">{formatDate(t.txn_date)}</span>
@@ -673,16 +674,16 @@ function PaymentsTab({ worker }: { worker: EmployeeRow }) {
                   </div>
                   {t.note && <div className="truncate text-xs text-muted">{t.note}</div>}
                 </div>
-                <div className="font-semibold text-red">{formatPaise(t.amount_paise)}</div>
+                <div className="figure text-sm text-red">{formatPaise(t.amount_paise)}</div>
                 <button
-                  className="text-red"
+                  className="text-muted transition-colors hover:text-red"
                   aria-label="Delete payment"
                   onClick={() => {
                     if (confirm("Delete this payment? The balance will go back up."))
                       remove.mutate(t.id);
                   }}
                 >
-                  🗑
+                  <Icon name="trash" className="h-4 w-4" />
                 </button>
               </div>
             ))}
@@ -690,7 +691,7 @@ function PaymentsTab({ worker }: { worker: EmployeeRow }) {
         )}
         <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
           <span>Paid (period)</span>
-          <span className="text-red">{formatPaise(sumPaise(txns))}</span>
+          <span className="figure text-red">{formatPaise(sumPaise(txns))}</span>
         </div>
       </Card>
     </div>
@@ -732,24 +733,26 @@ function SettlementTab({ worker }: { worker: EmployeeRow }) {
 
   return (
     <Card className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="font-semibold">Settlement</div>
-        <div className="flex gap-2">
-          <Button size="sm" variant="soft" onClick={share}>
-            📄 PDF
-          </Button>
-          <Button size="sm" variant="soft" onClick={shareExcel}>
-            📊 Excel
-          </Button>
-        </div>
-      </div>
+      <SectionHead
+        title="Settlement"
+        action={
+          <div className="flex gap-2">
+            <Button size="sm" variant="ghost" onClick={share}>
+              PDF
+            </Button>
+            <Button size="sm" variant="ghost" onClick={shareExcel}>
+              Excel
+            </Button>
+          </div>
+        }
+      />
       <DateRangeFilter range={range} onChange={setRange} />
 
       <div className="space-y-1">
         {rows.map((r) => (
           <div key={r.k} className="flex items-center justify-between py-1.5">
             <span className="text-sm text-muted">{r.k}</span>
-            <span className={cn("font-semibold", r.neg && "text-red")}>
+            <span className={cn("figure text-sm", r.neg && "text-red")}>
               {formatPaise(r.v)}
             </span>
           </div>
@@ -758,7 +761,7 @@ function SettlementTab({ worker }: { worker: EmployeeRow }) {
           <span className="font-semibold">Balance payable</span>
           <span
             className={cn(
-              "text-lg font-bold",
+              "figure text-lg",
               settlement.closingBalancePaise > 0 ? "text-amber" : "text-green",
             )}
           >

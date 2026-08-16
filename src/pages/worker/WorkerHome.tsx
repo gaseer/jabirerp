@@ -14,7 +14,7 @@ import { shareSettlementXlsx } from "@/lib/xlsx";
 import { formatPaise } from "@/lib/money";
 import { formatDate, todayIso, type DateRange } from "@/lib/dates";
 import { useAuth } from "@/store/auth";
-import { Card } from "@/components/ui/card";
+import { Card, SectionHead } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -37,7 +37,7 @@ function StatusPill({ status }: { status: AttendanceStatus }) {
   return (
     <span
       className={cn(
-        "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",
+        "label shrink-0 rounded-sm px-1.5 py-0.5",
         status === "pending" ? "bg-amber-soft text-amber" : "bg-red-soft text-red",
       )}
     >
@@ -134,7 +134,7 @@ function WorkerRecordMissing() {
 
   return (
     <Card className="space-y-3">
-      <div className="font-semibold">Can't load your details</div>
+      <SectionHead title="Can't load your details" />
       {online ? (
         <>
           <p className="text-sm text-muted">
@@ -216,7 +216,7 @@ function MyAttendanceTab({
   return (
     <div className="space-y-3">
       <Card className="space-y-3">
-        <div className="font-semibold">Mark attendance</div>
+        <SectionHead title="Mark attendance" />
         {sites.length === 0 && (
           <p className="text-sm text-muted">
             No sites available yet — connect once online, or check with your contractor.
@@ -266,7 +266,7 @@ function MyAttendanceTab({
           {previewHours > 0 ? (
             <p className="text-sm text-muted">
               {hoursLabel(previewHours)} × {formatPaise(worker.hourly_wage_paise)}/hr ={" "}
-              <span className="font-semibold text-text">
+              <span className="figure text-text">
                 {formatPaise(attendanceWagePaise(worker.hourly_wage_paise, previewHours))}
               </span>
             </p>
@@ -289,7 +289,7 @@ function MyAttendanceTab({
       </Card>
 
       <Card className="space-y-3">
-        <div className="font-semibold">My attendance</div>
+        <SectionHead title="My attendance" />
         <DateRangeFilter range={range} onChange={setRange} />
         {rows.length === 0 ? (
           <p className="text-sm text-muted">No attendance in this period.</p>
@@ -309,14 +309,14 @@ function MyAttendanceTab({
                     {siteName.get(r.site_id) ?? "Unknown site"}
                   </div>
                 </div>
-                <div className="font-semibold">{formatPaise(r.wage_paise)}</div>
+                <div className="figure text-sm">{formatPaise(r.wage_paise)}</div>
               </div>
             ))}
           </div>
         )}
         <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
           <span>Wages (period, approved only)</span>
-          <span>
+          <span className="figure">
             {formatPaise(
               rows.filter((r) => r.status === "approved").reduce((s, r) => s + r.wage_paise, 0),
             )}
@@ -337,14 +337,14 @@ function MyPaymentsTab({ worker }: { worker: EmployeeRow }) {
 
   return (
     <Card className="space-y-3">
-      <div className="font-semibold">Payment history</div>
+      <SectionHead title="Payment history" />
       <DateRangeFilter range={range} onChange={setRange} />
       {txns.length === 0 ? (
         <p className="text-sm text-muted">No payments in this period.</p>
       ) : (
-        <div className="divide-y divide-border">
+        <div className="busbar">
           {txns.map((t) => (
-            <div key={t.id} className="flex items-center gap-2 py-2">
+            <div key={t.id} className="tap tap-out flex items-center gap-2 py-2.5">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-sm">{formatDate(t.txn_date)}</span>
@@ -352,14 +352,14 @@ function MyPaymentsTab({ worker }: { worker: EmployeeRow }) {
                 </div>
                 {t.note && <div className="truncate text-xs text-muted">{t.note}</div>}
               </div>
-              <div className="font-semibold text-red">{formatPaise(t.amount_paise)}</div>
+              <div className="figure text-sm text-red">{formatPaise(t.amount_paise)}</div>
             </div>
           ))}
         </div>
       )}
       <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
         <span>Paid (period)</span>
-        <span className="text-red">{formatPaise(sumPaise(txns))}</span>
+        <span className="figure text-red">{formatPaise(sumPaise(txns))}</span>
       </div>
     </Card>
   );
@@ -399,31 +399,33 @@ function MySettlementTab({
 
   return (
     <Card className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="font-semibold">Settlement</div>
-        <div className="flex gap-2">
-          <Button size="sm" variant="soft" onClick={share}>
-            📄 PDF
-          </Button>
-          <Button size="sm" variant="soft" onClick={shareExcel}>
-            📊 Excel
-          </Button>
-        </div>
-      </div>
+      <SectionHead
+        title="Settlement"
+        action={
+          <div className="flex gap-2">
+            <Button size="sm" variant="ghost" onClick={share}>
+              PDF
+            </Button>
+            <Button size="sm" variant="ghost" onClick={shareExcel}>
+              Excel
+            </Button>
+          </div>
+        }
+      />
       <DateRangeFilter range={range} onChange={setRange} />
 
       <div className="space-y-1">
         {rows.map((r) => (
           <div key={r.k} className="flex items-center justify-between py-1.5">
             <span className="text-sm text-muted">{r.k}</span>
-            <span className={cn("font-semibold", r.neg && "text-red")}>{formatPaise(r.v)}</span>
+            <span className={cn("figure text-sm", r.neg && "text-red")}>{formatPaise(r.v)}</span>
           </div>
         ))}
         <div className="flex items-center justify-between border-t border-border pt-2">
           <span className="font-semibold">Balance payable</span>
           <span
             className={cn(
-              "text-lg font-bold",
+              "figure text-lg",
               settlement.closingBalancePaise > 0 ? "text-amber" : "text-green",
             )}
           >

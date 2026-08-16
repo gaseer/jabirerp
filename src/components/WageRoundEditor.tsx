@@ -36,7 +36,7 @@ export function WageRoundEditor({
           value={value}
           onChange={(e) => onChange(e.target.value)}
         />
-        <span className="text-sm font-semibold text-text">{formatPaise(finalPaise)}</span>
+        <span className="figure text-text">{formatPaise(finalPaise)}</span>
         {value.trim() !== "" && (
           <button type="button" className="text-xs text-primary" onClick={() => onChange("")}>
             ↺ reset
@@ -52,7 +52,7 @@ export function WageRoundEditor({
               type="button"
               onClick={() => onChange(String(v))}
               className={cn(
-                "rounded-full border px-2 py-0.5 text-xs font-medium",
+                "figure rounded-sm border px-2 py-0.5 text-xs",
                 selected === v
                   ? "border-primary bg-primary-soft text-primary"
                   : "border-border text-muted hover:border-primary/50 hover:text-primary",

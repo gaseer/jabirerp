@@ -5,9 +5,10 @@ import { db } from "@/lib/db";
 import { siteTaskRepo } from "@/repo/repos";
 import { sync } from "@/repo/SupabaseSync";
 import { useEntryMode } from "@/store/settings";
-import { Card } from "@/components/ui/card";
+import { Card, SectionHead } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Icon } from "@/components/Icon";
 import { EntryGrid } from "@/components/grid/EntryGrid";
 import type { GridColumn } from "@/components/grid/SheetGrid";
 import { cn } from "@/lib/utils";
@@ -74,7 +75,7 @@ export function PendingTab({ site }: { site: SiteRow }) {
 
   return (
     <Card className="space-y-3">
-      <div className="font-semibold">Pending works</div>
+      <SectionHead title="Pending works" />
 
       {excel ? (
         <EntryGrid
@@ -98,13 +99,13 @@ export function PendingTab({ site }: { site: SiteRow }) {
             onChange={(e) => setText(e.target.value)}
           />
           <Button type="submit" size="sm" className="h-11 shrink-0" disabled={add.isPending}>
-            ＋ Add
+            Add
           </Button>
         </form>
       )}
 
       {tasks.length === 0 ? (
-        <p className="py-4 text-center text-sm text-muted">No pending works 🎉</p>
+        <p className="py-4 text-center text-sm text-muted">No pending works.</p>
       ) : (
         <div className="divide-y divide-border">
           {tasks.map((t) => (
@@ -113,13 +114,13 @@ export function PendingTab({ site }: { site: SiteRow }) {
                 aria-label={t.done ? "Mark not done" : "Mark done"}
                 onClick={() => toggle.mutate(t.id)}
                 className={cn(
-                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs",
+                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-sm border",
                   t.done
                     ? "border-green bg-green-soft text-green"
                     : "border-border text-transparent",
                 )}
               >
-                ✓
+                <Icon name="check" className="h-3.5 w-3.5" />
               </button>
               <span
                 className={cn(
@@ -130,11 +131,11 @@ export function PendingTab({ site }: { site: SiteRow }) {
                 {t.text}
               </span>
               <button
-                className="text-red"
+                className="text-muted transition-colors hover:text-red"
                 aria-label="Delete task"
                 onClick={() => remove.mutate(t.id)}
               >
-                ✕
+                <Icon name="trash" className="h-4 w-4" />
               </button>
             </div>
           ))}

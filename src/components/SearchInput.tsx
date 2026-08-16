@@ -1,3 +1,4 @@
+import { Icon } from "@/components/Icon";
 import { Input } from "@/components/ui/input";
 
 /** Search box with magnifier + clear button. Controlled, debounce-free —
@@ -13,9 +14,10 @@ export function SearchInput({
 }) {
   return (
     <div className="relative">
-      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm">
-        🔍
-      </span>
+      <Icon
+        name="search"
+        className="pointer-events-none absolute left-2.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted"
+      />
       <Input
         type="search"
         className="pl-9 pr-9"

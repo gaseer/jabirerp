@@ -9,13 +9,13 @@ export function ModeToggle({
   mode: TxnMode;
   onChange: (mode: TxnMode) => void;
 }) {
-  const seg = (value: TxnMode, label: string) => (
+  const seg = (value: TxnMode, label: string, activeCls: string) => (
     <button
       type="button"
       onClick={() => onChange(value)}
       className={cn(
-        "flex-1 rounded-sm py-2 text-sm font-semibold",
-        mode === value ? "bg-primary text-white" : "bg-border/40 text-muted",
+        "label flex-1 rounded-sm py-2.5",
+        mode === value ? `${activeCls} text-white` : "bg-border/40 text-muted",
       )}
     >
       {label}
@@ -23,8 +23,8 @@ export function ModeToggle({
   );
   return (
     <div className="flex gap-2">
-      {seg("cash", "💵 Cash")}
-      {seg("bank", "🏦 Bank")}
+      {seg("cash", "Cash", "bg-cash")}
+      {seg("bank", "Bank", "bg-bank")}
     </div>
   );
 }

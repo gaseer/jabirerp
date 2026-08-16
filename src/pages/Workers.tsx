@@ -8,10 +8,11 @@ import { empBalancePaise } from "@/domain/settlement";
 import { formatPaise, toPaise } from "@/lib/money";
 import { matchesQuery } from "@/lib/search";
 import { useEntryMode } from "@/store/settings";
-import { Card } from "@/components/ui/card";
+import { Card, SectionHead } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Icon } from "@/components/Icon";
 import { SearchInput } from "@/components/SearchInput";
 import { CrudGrid } from "@/components/grid/CrudGrid";
 import type { GridColumn } from "@/components/grid/SheetGrid";
@@ -173,10 +174,10 @@ export function Workers() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold">Workers</h2>
+        <h2 className="text-xl">Workers</h2>
         {!excel && (
           <Button size="sm" onClick={() => setForm({ ...empty })}>
-            ＋ Add worker
+            Add worker
           </Button>
         )}
       </div>
@@ -262,7 +263,7 @@ export function Workers() {
       {!excel && form && (
         <Card>
           <form onSubmit={submit} className="space-y-3">
-            <div className="font-semibold">{form.id ? "Edit worker" : "New worker"}</div>
+            <SectionHead title={form.id ? "Edit worker" : "New worker"} />
             <Input
               placeholder="Name *"
               value={form.name}
@@ -315,8 +316,8 @@ export function Workers() {
 
       {excel ? null : workers.length === 0 && !form ? (
         <Card className="flex flex-col items-center gap-2 py-10 text-center text-muted">
-          <span className="text-4xl">👷</span>
-          <p>No workers yet. Tap ＋ to add your first worker.</p>
+          <Icon name="workers" className="h-9 w-9" />
+          <p>No workers yet. Add your first worker above.</p>
         </Card>
       ) : (
         <>
@@ -371,27 +372,39 @@ export function Workers() {
                     </div>
                   </button>
                   <div className="text-right">
-                    <div className={cn("font-semibold", bal > 0 ? "text-amber" : "text-green")}>
+                    <div className={cn("figure text-sm", bal > 0 ? "text-amber" : "text-green")}>
                       {formatPaise(Math.abs(bal))}
                     </div>
                     <div className="text-[11px] text-muted">
                       {bal > 0 ? "payable" : bal < 0 ? "advance given" : "settled"}
                     </div>
                   </div>
-                  <button className="text-muted" aria-label="Edit worker" onClick={() => edit(w)}>
-                    ✎
+                  <button
+                    className="text-muted transition-colors hover:text-bus"
+                    aria-label="Edit worker"
+                    onClick={() => edit(w)}
+                  >
+                    <Icon name="edit" className="h-4 w-4" />
                   </button>
                   <button
-                    className="text-red"
+                    className="text-muted transition-colors hover:text-red"
                     aria-label="Delete worker"
                     onClick={() => confirmDelete(w)}
                   >
-                    🗑
+                    <Icon name="trash" className="h-4 w-4" />
                   </button>
                 </div>
                 <div className="flex items-center justify-between border-t border-border pt-2 text-xs">
-                  <span className={w.auth_user_id ? "text-green" : "text-muted"}>
-                    {w.auth_user_id ? "🔗 Worker login activated" : "Worker login not activated"}
+                  <span
+                    className={cn(
+                      "flex items-center gap-1.5",
+                      w.auth_user_id ? "text-green" : "text-muted",
+                    )}
+                  >
+                    {w.auth_user_id && (
+                      <Icon name="link" className="h-3.5 w-3.5 shrink-0" />
+                    )}
+                    {w.auth_user_id ? "Worker login activated" : "Worker login not activated"}
                   </span>
                   {w.auth_user_id && (
                     <button

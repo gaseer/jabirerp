@@ -10,6 +10,7 @@ import {
 } from "@/domain/invoice";
 import { formatPaise, toPaise } from "@/lib/money";
 import { cn } from "@/lib/utils";
+import { Icon } from "@/components/Icon";
 import { SheetGrid, type GridColumn, type GridRow } from "./SheetGrid";
 
 /**
@@ -286,7 +287,7 @@ export function InvoiceGrid({
           {sections.map((s) => (
             <div key={s.name} className="flex items-center justify-between">
               <span className="text-muted">{s.name}</span>
-              <span className="font-medium tabular-nums">{formatPaise(s.paise)}</span>
+              <span className="figure text-sm">{formatPaise(s.paise)}</span>
             </div>
           ))}
         </div>
@@ -310,13 +311,13 @@ function ColumnToggle({
       aria-pressed={on}
       onClick={onClick}
       className={cn(
-        "rounded-sm border px-2 py-1 font-medium",
+        "inline-flex items-center gap-1 rounded-sm border px-2 py-1 font-medium",
         on
           ? "border-primary/40 bg-primary-soft text-primary"
           : "border-border text-muted",
       )}
     >
-      {on ? "✓ " : ""}
+      {on && <Icon name="check" className="h-3 w-3" />}
       {children}
     </button>
   );

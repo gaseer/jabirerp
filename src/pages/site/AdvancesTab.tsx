@@ -10,9 +10,10 @@ import { shareAdvanceStatementXlsx } from "@/lib/xlsx";
 import { formatPaise, toPaise } from "@/lib/money";
 import { formatDate, todayIso, type DateRange } from "@/lib/dates";
 import { useEntryMode } from "@/store/settings";
-import { Card } from "@/components/ui/card";
+import { Card, SectionHead } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Icon } from "@/components/Icon";
 import { ModeTag } from "@/components/ModeTag";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { ModeToggle } from "@/components/ModeToggle";
@@ -102,7 +103,7 @@ export function AdvancesTab({ site }: { site: SiteRow }) {
   return (
     <div className="space-y-3">
       <Card className="space-y-3">
-        <div className="font-semibold">Record advance{excel ? "s" : ""} received</div>
+        <SectionHead title={`Record advance${excel ? "s" : ""} received`} />
         {excel ? (
           <EntryGrid
             columns={ADVANCE_COLUMNS}
@@ -150,32 +151,39 @@ export function AdvancesTab({ site }: { site: SiteRow }) {
             />
             {err && <p className="text-sm text-red">{err}</p>}
             <Button type="submit" size="sm" disabled={add.isPending}>
-              ＋ Add advance
+              Add advance
             </Button>
           </form>
         )}
       </Card>
 
       <Card className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="font-semibold">Advance history</div>
-          <div className="flex gap-2">
-            <Button size="sm" variant="soft" disabled={txns.length === 0} onClick={shareStatement}>
-              📄 PDF
-            </Button>
-            <Button size="sm" variant="soft" disabled={txns.length === 0} onClick={shareStatementExcel}>
-              📊 Excel
-            </Button>
-          </div>
-        </div>
+        <SectionHead
+          title="Advance history"
+          action={
+            <div className="flex gap-2">
+              <Button size="sm" variant="ghost" disabled={txns.length === 0} onClick={shareStatement}>
+                PDF
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={txns.length === 0}
+                onClick={shareStatementExcel}
+              >
+                Excel
+              </Button>
+            </div>
+          }
+        />
         <DateRangeFilter range={range} onChange={setRange} />
 
         {txns.length === 0 ? (
           <p className="text-sm text-muted">No advances in this period.</p>
         ) : (
-          <div className="divide-y divide-border">
+          <div className="busbar">
             {txns.map((t) => (
-              <div key={t.id} className="flex items-center gap-2 py-2">
+              <div key={t.id} className="tap tap-in flex items-center gap-2 py-2.5">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-sm">{formatDate(t.txn_date)}</span>
@@ -183,16 +191,16 @@ export function AdvancesTab({ site }: { site: SiteRow }) {
                   </div>
                   {t.note && <div className="truncate text-xs text-muted">{t.note}</div>}
                 </div>
-                <div className="font-semibold text-green">{formatPaise(t.amount_paise)}</div>
+                <div className="figure text-sm text-green">{formatPaise(t.amount_paise)}</div>
                 <button
-                  className="text-red"
+                  className="text-muted transition-colors hover:text-red"
                   aria-label="Delete advance"
                   onClick={() => {
                     if (confirm("Delete this advance? It will vanish from all totals."))
                       remove.mutate(t.id);
                   }}
                 >
-                  🗑
+                  <Icon name="trash" className="h-4 w-4" />
                 </button>
               </div>
             ))}
@@ -201,7 +209,7 @@ export function AdvancesTab({ site }: { site: SiteRow }) {
 
         <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
           <span>Total (period)</span>
-          <span className="text-green">{formatPaise(sumPaise(txns))}</span>
+          <span className="figure text-green">{formatPaise(sumPaise(txns))}</span>
         </div>
       </Card>
     </div>
