@@ -21,25 +21,33 @@ export function Modal({
   className?: string;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
     };
     document.addEventListener("keydown", onKey);
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     // Focus the first field so keyboard/typing lands in the form immediately.
-    const first = panelRef.current?.querySelector<HTMLElement>(
-      "input, select, textarea, button",
-    );
+    const panel = panelRef.current;
+    const first = panel?.querySelector<HTMLElement>(
+      "input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled])",
+    ) ?? panel?.querySelector<HTMLElement>("button:not([disabled])");
     first?.focus();
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prevOverflow;
     };
-  }, [open, onClose]);
+    // Form edits can replace onClose on every keystroke. Focus and scroll
+    // locking belong to opening/closing the dialog, not callback changes.
+  }, [open]);
 
   if (!open) return null;
 

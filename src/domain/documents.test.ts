@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
-import { lineItemRepo } from "@/repo/repos";
+import { documentRepo, lineItemRepo } from "@/repo/repos";
 import { useAuth } from "@/store/auth";
 import {
   convertToBill,
@@ -9,6 +9,8 @@ import {
   listItems,
 } from "./documents";
 import { documentTotalPaise } from "./quotation";
+import { invoiceTotals } from "./invoice";
+import { siteBillTotalPaise } from "./pnl";
 
 const SITE = "site-1";
 
@@ -47,6 +49,38 @@ async function seedQuotation() {
 }
 
 describe("convertToBill", () => {
+  it("carries the single document price and discount into the bill without changing item prices", async () => {
+    const quotation = await seedQuotation();
+    await documentRepo.put({ ...quotation, lump_sum_paise: 600000, discount_paise: 50000 });
+    expect(await siteBillTotalPaise(SITE)).toBe(0);
+    const bill = await convertToBill(SITE);
+    expect(bill.lump_sum_paise).toBe(600000);
+    expect(bill.discount_paise).toBe(50000);
+    expect(documentTotalPaise(await listItems(bill.id))).toBe(750000);
+    expect(await siteBillTotalPaise(SITE)).toBe(550000);
+  });
+  it("preserves a quotation discount in the bill and billed income", async () => {
+    const quotation = await seedQuotation();
+    await documentRepo.put({ ...quotation, discount_paise: 50000 });
+    expect(await siteBillTotalPaise(SITE)).toBe(0);
+
+    const bill = await convertToBill(SITE);
+    expect((await documentRepo.getById(bill.id))?.discount_paise).toBe(50000);
+    expect(invoiceTotals(await listItems(bill.id), bill.discount_paise)).toEqual({
+      subtotalPaise: 750000,
+      discountPaise: 50000,
+      totalPaise: 700000,
+    });
+    expect(await siteBillTotalPaise(SITE)).toBe(700000);
+  });
+
+  it("clamps a converted quotation discount so billed income cannot be negative", async () => {
+    const quotation = await seedQuotation();
+    await documentRepo.put({ ...quotation, discount_paise: 900000 });
+    await convertToBill(SITE);
+    expect(await siteBillTotalPaise(SITE)).toBe(0);
+  });
+
   it("copies quotation items into a new bill and marks quotation converted", async () => {
     await seedQuotation();
     const bill = await convertToBill(SITE);

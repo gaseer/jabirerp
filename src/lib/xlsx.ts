@@ -14,9 +14,76 @@ import { BRAND_NAME, BRAND_SUBTITLE } from "@/lib/brand";
 import type { Settlement } from "@/domain/settlement";
 import type { ShopLedger } from "@/domain/shops";
 import { sumPaise } from "@/domain/transactions";
-import { documentTotalPaise } from "@/domain/quotation";
 import { groupSections, invoiceTotals, isUnsectioned } from "@/domain/invoice";
 import { hoursLabel, timeRangeLabel } from "@/domain/wages";
+import type { SiteWorkersReport } from "@/domain/siteWorkers";
+
+/** Numeric hours and wages for this site's approved attendance only. */
+export async function shareSiteWorkersXlsx(site: SiteRow, report: SiteWorkersReport): Promise<void> {
+  await renderStatementXlsx({
+    sheetName: "Site workers",
+    title: "SITE WORKERS STATEMENT",
+    partyName: site.name,
+    partySub: [site.location, site.work_type].filter(Boolean).join("  ·  "),
+    periodLabel: "All time - approved attendance only",
+    sections: [
+      {
+        heading: "Workers on this site",
+        head: ["Worker", "Hours", "Wages"],
+        rows: report.workers.map((worker) => [worker.name, worker.hours, paiseToRupees(worker.wagesPaise)]),
+        foot: ["Total", report.totalHours, paiseToRupees(report.totalWagesPaise)],
+      },
+      {
+        heading: "Approved shifts",
+        head: ["Date", "Worker", "Time", "Hours", "Wage"],
+        rows: report.shifts.map(({ attendance: row, workerName }) => [
+          formatDate(row.work_date),
+          workerName,
+          timeRangeLabel(row.start_time, row.end_time),
+          row.hours,
+          paiseToRupees(row.wage_paise),
+        ]),
+      },
+    ],
+    summary: [
+      { k: "Workers", v: report.workers.length },
+      { k: "Total hours", v: report.totalHours },
+      { k: "Total wages (site)", v: paiseToRupees(report.totalWagesPaise) },
+    ],
+    filename: slugFilename("site-workers", site.name, "xlsx"),
+  });
+}
+
+/** Same filtered expenses as the PDF, with real numeric amount cells. */
+export async function shareSiteExpensesXlsx(
+  site: SiteRow,
+  expenses: TransactionRow[],
+  range: DateRange,
+  category = "",
+): Promise<void> {
+  const total = sumPaise(expenses);
+  await renderStatementXlsx({
+    sheetName: "Site expenses",
+    title: "SITE EXPENSES STATEMENT",
+    partyName: site.name,
+    partySub: [site.location, site.work_type].filter(Boolean).join("  ·  "),
+    periodLabel: rangeLabel(range),
+    sections: [{
+      heading: category ? `Expenses - ${category}` : "Expenses - all categories",
+      head: ["Date", "Category", "Mode", "Note", "Amount"],
+      rows: expenses.map((expense) => [
+        formatDate(expense.txn_date),
+        expense.category ?? "",
+        expense.mode === "bank" ? "Bank" : "Cash",
+        expense.note ?? "",
+        paiseToRupees(expense.amount_paise),
+      ]),
+      foot: ["", "", "", "Total expenses", paiseToRupees(total)],
+    }],
+    summary: [{ k: "Total expenses (period)", v: paiseToRupees(total) }],
+    filename: slugFilename("site-expenses", site.name, "xlsx"),
+  });
+}
 
 /**
  * Excel (.xlsx) sibling of the customer/worker statement PDFs. Same content and
@@ -116,9 +183,13 @@ export async function shareDocumentXlsx(
   site: SiteRow,
   kind: DocKind,
   items: LineItemRow[],
+  discountPaise = 0,
+  lumpSumPaise: number | null = null,
 ): Promise<void> {
   const title = kind === "quotation" ? "QUOTATION" : "BILL";
-  const total = documentTotalPaise(items);
+  const totals = invoiceTotals(items, discountPaise, lumpSumPaise);
+  const oneRate = lumpSumPaise !== null;
+  const total = totals.totalPaise;
   await renderStatementXlsx({
     sheetName: title.charAt(0) + title.slice(1).toLowerCase(),
     title,
@@ -130,18 +201,23 @@ export async function shareDocumentXlsx(
     sections: [
       {
         heading: "Line items",
-        head: ["#", "Description", "Qty", "Rate", "Amount"],
+        head: oneRate ? ["#", "Description", "Qty"] : ["#", "Description", "Qty", "Rate", "Amount"],
         rows: items.map((it, i) => [
           String(i + 1),
           it.description,
           it.qty,
-          paiseToRupees(it.rate_paise),
-          paiseToRupees(it.amount_paise),
+          ...(!oneRate ? [paiseToRupees(it.rate_paise), paiseToRupees(it.amount_paise)] : []),
         ]),
-        foot: ["", "", "", "Total", paiseToRupees(total)],
+        foot: oneRate ? undefined : ["", "", "", totals.discountPaise > 0 ? "Subtotal" : "Total", paiseToRupees(totals.subtotalPaise)],
       },
     ],
-    summary: [{ k: "Total", v: paiseToRupees(total) }],
+    summary: [
+      ...((totals.discountPaise > 0 || oneRate) ? [
+        { k: oneRate ? "One Rate for all" : "Subtotal", v: paiseToRupees(totals.subtotalPaise) },
+      ] : []),
+      ...(totals.discountPaise > 0 ? [{ k: "Discount", v: -paiseToRupees(totals.discountPaise) }] : []),
+      { k: "Total", v: paiseToRupees(total) },
+    ],
     filename: slugFilename(kind, site.name, "xlsx"),
   });
 }
@@ -156,11 +232,12 @@ export async function shareInvoiceXlsx(
   invoice: DocumentRow,
   items: LineItemRow[],
 ): Promise<void> {
+  const oneRate = invoice.lump_sum_paise != null;
   const sections = groupSections(items);
   const flat = isUnsectioned(sections);
-  const totals = invoiceTotals(items, invoice.discount_paise);
+  const totals = invoiceTotals(items, invoice.discount_paise, invoice.lump_sum_paise);
 
-  const head = ["#", "Work / Item", "Unit", "Qty", "Rate", "Amount"];
+  const head = oneRate ? ["#", "Work / Item", "Unit", "Qty"] : ["#", "Work / Item", "Unit", "Qty", "Rate", "Amount"];
   let lineNo = 0;
   const xlsxSections: XlsxSection[] = sections.map((section) => ({
     heading: flat ? "Line items" : section.name,
@@ -170,15 +247,14 @@ export async function shareInvoiceXlsx(
       it.description,
       it.unit ?? "",
       it.qty,
-      paiseToRupees(it.rate_paise),
-      paiseToRupees(it.amount_paise),
+      ...(!oneRate ? [paiseToRupees(it.rate_paise), paiseToRupees(it.amount_paise)] : []),
     ]),
-    foot: flat
+    foot: oneRate ? undefined : flat
       ? ["", "", "", "", "Subtotal", paiseToRupees(section.subtotalPaise)]
       : ["", "", "", "", `${section.name} subtotal`, paiseToRupees(section.subtotalPaise)],
   }));
 
-  const summary = [{ k: "Subtotal", v: paiseToRupees(totals.subtotalPaise) }];
+  const summary = [{ k: oneRate ? "One Rate for all" : "Subtotal", v: paiseToRupees(totals.subtotalPaise) }];
   if (totals.discountPaise > 0)
     summary.push({ k: "Discount", v: -paiseToRupees(totals.discountPaise) });
   summary.push({ k: "Total", v: paiseToRupees(totals.totalPaise) });

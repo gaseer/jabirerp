@@ -1,5 +1,31 @@
 # Power Plus — MVP Verification Checklist
 
+## Editing keyboard focus
+
+- [ ] On mobile, open Workers → worker → Attendance → Edit and type a multi-digit wage including decimals. The keyboard must stay open, the caret must stay in the wage field, and Save must retain the entered amount.
+- [ ] Repeat in Attendance → Approve, Site → Workers → Edit attendance, and quotation/bill item editing. Type into later fields (rate, quantity, description) and confirm focus never jumps to another field or the close button.
+- [ ] Check Escape, backdrop, and Close still dismiss dialogs. Opening/reopening focuses the first enabled field; scrolling is locked only while the dialog is open.
+
+## Site expenses sharing
+
+- [ ] In Site → Expenses (Excel and form modes), use **Share PDF** and **Share Excel**. Confirm the site name, dates, categories, cash/bank modes, notes, and total match the visible list.
+- [ ] Apply date and category filters, then export again: only matching expenses appear, and the period/category are printed. With no matching expenses, both buttons are disabled. Excel amounts must be numeric, including paise fractions.
+- [ ] Check PDF page breaks with many expenses and long notes. Verify mobile sharing and desktop download behavior.
+
+## Site workers sharing
+
+- [ ] Open Site → Workers in both Excel and form modes. **Share PDF** and **Share Excel** appear under Workers on this site; both are disabled when there is no approved attendance.
+- [ ] Add several shifts for multiple workers, including a rounded wage and attendance at another site. Export both formats: this site's worker names, total hours, stored wages, and dated shift details must match the on-screen summary. Other-site, pending, rejected, and deleted shifts must be excluded.
+- [ ] Check the PDF letterhead, site name, and page breaks with a long shift list. Excel hours and wages must be numeric. Verify mobile sharing and desktop downloads, including while offline after the app has loaded.
+
+## Invoice and quotation discounts & One Rate for all
+
+- [ ] In Invoice and Quotation (both Excel and form modes), verify the amount appears before Discount ₹, followed by the final total. Enter a discount, reload, and confirm it persists; clearing it restores the full total. Discounts above the subtotal must produce a zero total.
+- [ ] Apply `supabase/migrations/0013_document_lump_sum.sql` in the Supabase SQL editor before syncing this version. New/existing documents start with **One Rate for all** Off. Enable it and enter ₹5,000 for the whole document: item rates, amounts, and section subtotals disappear; item quantities do not multiply the document price. Add/paste items and change quantities: the price stays ₹5,000. Enter a ₹250 discount: final total becomes ₹4,750.
+- [ ] Reload and sync to another device: the mode and total price persist. An entered zero stays in One Rate mode. Turn Off: the saved item prices reappear and normal quantity × rate totals resume.
+- [ ] Export PDF and Excel immediately after editing the total price or discount. One Rate documents list descriptions/quantities with no item prices or section subtotals; the document total, discount, final total, and PDF amount in words must agree. Item-priced documents retain their usual columns.
+- [ ] Convert a One Rate quotation to a bill: preserve its total price and discount; verify Invoice lists, Overview, receivable, profit, and customer statements use the correct discounted amount. Unconverted quotations must still not count as income.
+
 Slices 3–11 built in one batch. Everything below needs a human pass before
 calling MVP done. Automated: `npm test` (138 tests) and `npm run build` both green.
 

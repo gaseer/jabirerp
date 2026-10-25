@@ -10,6 +10,8 @@ import {
   sumPaise,
 } from "@/domain/transactions";
 import { formatPaise, toPaise } from "@/lib/money";
+import { shareSiteExpensesPdf } from "@/lib/statementPdf";
+import { shareSiteExpensesXlsx } from "@/lib/xlsx";
 import { formatDate, todayIso, type DateRange } from "@/lib/dates";
 import { useEntryMode } from "@/store/settings";
 import { Card, SectionHead } from "@/components/ui/card";
@@ -54,13 +56,19 @@ export function ExpensesTab({ site }: { site: SiteRow }) {
   });
   const [err, setErr] = useState<string | null>(null);
 
-  const { data: txns = [] } = useQuery({
+  const { data: txns = [], isSuccess: expensesReady } = useQuery({
     queryKey: ["expenses", site.id, range],
     queryFn: () => listTxns({ siteId: site.id, types: ["site_expense"], ...range }),
   });
 
   // Category filter is client-side; period total follows it.
   const visible = catFilter ? txns.filter((t) => t.category === catFilter) : txns;
+  const share = useMutation({
+    mutationFn: (format: "pdf" | "excel") => format === "pdf"
+      ? shareSiteExpensesPdf(site, visible, range, catFilter)
+      : shareSiteExpensesXlsx(site, visible, range, catFilter),
+  });
+  const canShare = expensesReady && visible.length > 0 && !share.isPending;
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["expenses", site.id] });
@@ -192,6 +200,16 @@ export function ExpensesTab({ site }: { site: SiteRow }) {
           <span>Total (period{catFilter ? ` · ${catFilter}` : ""})</span>
           <span className="figure text-red">{formatPaise(sumPaise(visible))}</span>
         </div>
+        <p className="text-xs text-muted">Exports use the selected dates and category.</p>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="ghost" disabled={!canShare} onClick={() => share.mutate("pdf")}>
+            Share PDF
+          </Button>
+          <Button size="sm" variant="ghost" disabled={!canShare} onClick={() => share.mutate("excel")}>
+            Share Excel
+          </Button>
+        </div>
+        {share.isError && <p role="alert" className="text-sm text-red">Could not share the expenses. Please try again.</p>}
       </Card>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { DocumentRow } from "@/lib/db";
@@ -15,6 +15,7 @@ import { shareInvoicePdf } from "@/lib/pdf";
 import { shareInvoiceXlsx } from "@/lib/xlsx";
 import { formatPaise, toPaise } from "@/lib/money";
 import { InvoiceGrid } from "@/components/grid/InvoiceGrid";
+import { OneRateControl } from "@/components/OneRateControl";
 import { Card, SectionHead } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +37,8 @@ export function InvoiceEditor() {
   // Live subtotal straight off the grid, so the total bar tracks typing
   // instead of lagging behind the save debounce.
   const [liveSubtotal, setLiveSubtotal] = useState<number | null>(null);
+  const [lumpSumDraft, setLumpSum] = useState<number | null | undefined>(undefined);
+  const flushLines = useRef<(() => Promise<void>) | null>(null);
 
   const bundleKey = ["invoice", id];
   const { data: bundle } = useQuery({
@@ -65,14 +68,19 @@ export function InvoiceEditor() {
   const doc = bundle?.doc ?? null;
   const site = bundle?.site ?? null;
   const items = bundle?.items ?? [];
+  const lumpSum = lumpSumDraft === undefined ? (doc?.lump_sum_paise ?? null) : lumpSumDraft;
+  useEffect(() => setLumpSum(undefined), [id]);
 
   const saveHeader = useMutation({
+    scope: { id: `invoice-header-${id}` },
     mutationFn: async (patch: Partial<DocumentRow>) => {
       if (!doc) return;
-      await documentRepo.put({ ...doc, ...patch });
+      const current = await documentRepo.getById(doc.id);
+      if (!current) return;
+      await documentRepo.put({ ...current, ...patch });
       pushSoon();
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: bundleKey }),
+    onSuccess: () => qc.invalidateQueries(),
   });
 
   const importQuotation = useMutation({
@@ -114,16 +122,20 @@ export function InvoiceEditor() {
       ? items
       : [{ amount_paise: liveSubtotal }],
     doc.discount_paise,
+    lumpSum,
   );
   const issued = doc.status === "final";
 
   async function sharePdf() {
-    // Flush any debounced line edit by re-reading what is actually persisted.
-    if (doc) await shareInvoicePdf(site!, doc, await listItems(doc.id));
+    await flushLines.current?.();
+    await saveHeader.mutateAsync({ lump_sum_paise: lumpSum });
+    if (doc) await shareInvoicePdf(site!, (await documentRepo.getById(doc.id)) ?? doc, await listItems(doc.id));
   }
 
   async function shareExcel() {
-    if (doc) await shareInvoiceXlsx(site!, doc, await listItems(doc.id));
+    await flushLines.current?.();
+    await saveHeader.mutateAsync({ lump_sum_paise: lumpSum });
+    if (doc) await shareInvoiceXlsx(site!, (await documentRepo.getById(doc.id)) ?? doc, await listItems(doc.id));
   }
 
   return (
@@ -209,8 +221,15 @@ export function InvoiceEditor() {
           }
         />
 
+        <OneRateControl
+          value={lumpSum}
+          onChange={setLumpSum}
+          onCommit={(value) => saveHeader.mutate({ lump_sum_paise: value })}
+        />
         <InvoiceGrid
+          key={doc.id}
           documentId={doc.id}
+          oneRate={lumpSum !== null}
           items={items}
           ready={bundle !== undefined}
           library={library ?? []}
@@ -220,6 +239,7 @@ export function InvoiceEditor() {
             qc.invalidateQueries({ queryKey: ["invoices", doc.site_id] });
           }}
           onSubtotalChange={setLiveSubtotal}
+          flushRef={flushLines}
         />
       </Card>
 
@@ -242,6 +262,10 @@ export function InvoiceEditor() {
             placeholder="0"
             onCommit={(v) => saveHeader.mutate({ discount_paise: toPaise(v) })}
           />
+        </div>
+        <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
+          <span>Final total</span>
+          <span className="figure">{formatPaise(totals.totalPaise)}</span>
         </div>
         <label className="block text-xs text-muted">
           Notes on the invoice (optional)

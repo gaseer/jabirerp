@@ -88,6 +88,7 @@ export async function createInvoice(
     title: opts.title ?? null,
     notes: null,
     discount_paise: 0,
+    lump_sum_paise: null,
   });
 }
 
@@ -98,12 +99,15 @@ export interface InvoiceTotals {
   totalPaise: number;
 }
 
-/** Subtotal − clamped discount. The one place invoice money is summed. */
+/** Item subtotal or one document price, minus the clamped discount. */
 export function invoiceTotals(
   items: { amount_paise: number }[],
   discountPaise = 0,
+  lumpSumPaise: number | null = null,
 ): InvoiceTotals {
-  const subtotalPaise = documentTotalPaise(items);
+  const subtotalPaise = lumpSumPaise == null
+    ? documentTotalPaise(items)
+    : Math.max(0, Math.round(lumpSumPaise) || 0);
   const clamped = Math.min(Math.max(Math.round(discountPaise) || 0, 0), subtotalPaise);
   return {
     subtotalPaise,
@@ -116,8 +120,9 @@ export function invoiceTotals(
 export function invoiceTotalPaise(
   items: { amount_paise: number }[],
   discountPaise = 0,
+  lumpSumPaise: number | null = null,
 ): number {
-  return invoiceTotals(items, discountPaise).totalPaise;
+  return invoiceTotals(items, discountPaise, lumpSumPaise).totalPaise;
 }
 
 export interface InvoiceSection {

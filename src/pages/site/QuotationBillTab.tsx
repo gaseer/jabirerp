@@ -1,7 +1,7 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { DocKind, SiteRow } from "@/lib/db";
-import { lineItemRepo } from "@/repo/repos";
+import type { DocKind, DocumentRow, SiteRow } from "@/lib/db";
+import { documentRepo, lineItemRepo } from "@/repo/repos";
 import { sync } from "@/repo/SupabaseSync";
 import {
   convertToBill,
@@ -10,6 +10,7 @@ import {
   listItems,
 } from "@/domain/documents";
 import { documentTotalPaise, lineAmountPaise } from "@/domain/quotation";
+import { invoiceTotals } from "@/domain/invoice";
 import { shareDocumentPdf } from "@/lib/pdf";
 import { shareDocumentXlsx } from "@/lib/xlsx";
 import { formatPaise, toPaise } from "@/lib/money";
@@ -20,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Icon } from "@/components/Icon";
 import { Modal } from "@/components/ui/modal";
+import { OneRateControl } from "@/components/OneRateControl";
 
 const pushSoon = () => sync.sync().catch(() => {});
 
@@ -30,7 +32,7 @@ export function QuotationBillTab({ site }: { site: SiteRow }) {
     queryFn: async () => (await getDocByKind(site.id, "quotation")) ?? null,
   });
   const showBill = quotationDoc?.status === "converted";
-  return <DocumentSection site={site} kind={showBill ? "bill" : "quotation"} />;
+  return <DocumentSection key={`${site.id}-${showBill}`} site={site} kind={showBill ? "bill" : "quotation"} />;
 }
 
 type ItemFields = { description: string; qty: string; rate: string };
@@ -46,10 +48,14 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
   // Add-bar state (kept separate from the edit modal so an in-progress row
   // isn't clobbered when you tap an existing item to edit it).
   const [form, setForm] = useState<ItemFields>(BLANK_ITEM);
+  const [liveSubtotal, setLiveSubtotal] = useState<number | null>(null);
+  const [discount, setDiscount] = useState("");
+  const [lumpSumDraft, setLumpSum] = useState<number | null | undefined>(undefined);
   // Non-null = editing that existing row in the modal.
   const [edit, setEdit] = useState<(ItemFields & { id: string }) | null>(null);
   // Refocus Description after each add so 100s of rows go in without re-tapping.
   const descRef = useRef<HTMLInputElement>(null);
+  const flushLines = useRef<(() => Promise<void>) | null>(null);
 
   const bundleKey = ["docbundle", siteId, kind];
   const { data: bundle } = useQuery({
@@ -62,10 +68,32 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
   });
 
   const items = bundle?.items ?? [];
+  const lumpSum = lumpSumDraft === undefined ? (bundle?.doc?.lump_sum_paise ?? null) : lumpSumDraft;
+  const oneRate = lumpSum !== null;
   const total = documentTotalPaise(items);
+  const discountPaise = bundle?.doc?.discount_paise ?? 0;
+  useEffect(() => {
+    setDiscount(discountPaise ? String(discountPaise / 100) : "");
+  }, [discountPaise, kind]);
+  const totals = invoiceTotals(
+    excel && liveSubtotal !== null ? [{ amount_paise: liveSubtotal }] : items,
+    toPaise(discount),
+    lumpSum,
+  );
   const previewAmount = lineAmountPaise(Number(form.qty) || 0, toPaise(form.rate));
 
+  const savePricing = useMutation({
+    scope: { id: `discount-${siteId}-${kind}` },
+    mutationFn: async (patch: Partial<Pick<DocumentRow, "discount_paise" | "lump_sum_paise">>) => {
+      const doc = await ensureDocument(siteId, kind);
+      await documentRepo.put({ ...doc, ...patch });
+      pushSoon();
+    },
+    onSuccess: () => qc.invalidateQueries(),
+  });
+
   const saveItem = useMutation({
+    scope: { id: `items-${siteId}-${kind}` },
     mutationFn: async (payload: ItemFields & { id?: string }) => {
       const doc = await ensureDocument(siteId, kind);
       const qty = Number(payload.qty) || 0;
@@ -110,18 +138,31 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
 
   const convert = useMutation({
     mutationFn: async () => {
+      await flushEdits();
       await convertToBill(siteId);
       pushSoon();
     },
     onSuccess: () => qc.invalidateQueries(),
   });
 
+  async function flushEdits() {
+    if (excel) await flushLines.current?.();
+    await savePricing.mutateAsync({
+      discount_paise: Math.max(0, toPaise(discount)),
+      lump_sum_paise: lumpSum,
+    });
+  }
+
   async function sharePdf() {
-    await shareDocumentPdf(site, kind, items);
+    await flushEdits();
+    const doc = await getDocByKind(siteId, kind);
+    if (doc) await shareDocumentPdf(site, kind, await listItems(doc.id), doc.discount_paise, doc.lump_sum_paise);
   }
 
   async function shareExcel() {
-    await shareDocumentXlsx(site, kind, items);
+    await flushEdits();
+    const doc = await getDocByKind(siteId, kind);
+    if (doc) await shareDocumentXlsx(site, kind, await listItems(doc.id), doc.discount_paise, doc.lump_sum_paise);
   }
 
   function submitAdd(e: FormEvent) {
@@ -148,6 +189,13 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
           }
         />
 
+        <OneRateControl
+          disabled={bundle === undefined}
+          value={lumpSum}
+          onChange={setLumpSum}
+          onCommit={(value) => savePricing.mutate({ lump_sum_paise: value })}
+        />
+
         {excel ? (
           <LineItemGrid
             siteId={siteId}
@@ -155,10 +203,41 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
             items={items}
             ready={bundle !== undefined}
             onChanged={() => qc.invalidateQueries({ queryKey: bundleKey })}
+            onSubtotalChange={setLiveSubtotal}
+            oneRate={oneRate}
+            flushRef={flushLines}
           />
         ) : (
           FormBody()
         )}
+
+        {oneRate && (
+          <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
+            <span>Total amount</span>
+            <span className="figure">{formatPaise(totals.subtotalPaise)}</span>
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-2">
+          <label className="text-sm text-muted" htmlFor={`discount-${kind}`}>Discount ₹</label>
+          <Input
+            id={`discount-${kind}`}
+            className="h-9 w-32 text-right"
+            inputMode="decimal"
+            placeholder="0"
+            value={discount}
+            onChange={(e) => setDiscount(e.target.value)}
+            onBlur={() => {
+              if (toPaise(discount) !== discountPaise) savePricing.mutate({ discount_paise: Math.max(0, toPaise(discount)) });
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur();
+            }}
+          />
+        </div>
+        <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
+          <span>Final total</span>
+          <span className="figure">{formatPaise(totals.totalPaise)}</span>
+        </div>
 
         <div className="flex flex-wrap gap-2 border-t border-border pt-3">
           <Button size="sm" variant="ghost" disabled={items.length === 0} onClick={sharePdf}>
@@ -199,7 +278,7 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
                   onChange={(e) => setEdit({ ...edit, qty: e.target.value })}
                 />
               </label>
-              <label className="text-xs text-muted">
+              {!oneRate && <label className="text-xs text-muted">
                 Rate ₹
                 <Input
                   className="mt-1"
@@ -207,16 +286,16 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
                   value={edit.rate}
                   onChange={(e) => setEdit({ ...edit, rate: e.target.value })}
                 />
-              </label>
+              </label>}
             </div>
-            <p className="text-sm text-muted">
+            {!oneRate && <p className="text-sm text-muted">
               Line total:{" "}
               <span className="figure text-text">
                 {formatPaise(
                   lineAmountPaise(Number(edit.qty) || 0, toPaise(edit.rate)),
                 )}
               </span>
-            </p>
+            </p>}
             <div className="flex gap-2 pt-1">
               <Button type="submit" size="sm" disabled={saveItem.isPending}>
                 Save changes
@@ -257,25 +336,25 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
           />
-          <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+          <div className={oneRate ? "grid grid-cols-[1fr_auto] gap-2" : "grid grid-cols-[1fr_1fr_auto] gap-2"}>
             <Input
               placeholder="Qty"
               inputMode="decimal"
               value={form.qty}
               onChange={(e) => setForm({ ...form, qty: e.target.value })}
             />
-            <Input
+            {!oneRate && <Input
               placeholder="Rate ₹"
               inputMode="decimal"
               value={form.rate}
               onChange={(e) => setForm({ ...form, rate: e.target.value })}
-            />
+            />}
             <Button type="submit" size="md" disabled={saveItem.isPending}>
               Add
             </Button>
           </div>
           <p className="text-xs text-muted">
-            Line total: <span className="figure text-text">{formatPaise(previewAmount)}</span> ·
+            {!oneRate && <>Line total: <span className="figure text-text">{formatPaise(previewAmount)}</span> · </>}
             Enter to add — keeps typing for the next item.
           </p>
         </form>
@@ -304,10 +383,10 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
                 >
                   <div className="truncate">{it.description || "(no description)"}</div>
                   <div className="text-xs text-muted">
-                    {it.qty} × {formatPaise(it.rate_paise)}
+                    {oneRate ? `Qty: ${it.qty}` : <>{it.qty} × {formatPaise(it.rate_paise)}</>}
                   </div>
                 </button>
-                <div className="figure text-sm">{formatPaise(it.amount_paise)}</div>
+                {!oneRate && <div className="figure text-sm">{formatPaise(it.amount_paise)}</div>}
                 <button
                   className="text-muted transition-colors hover:text-red"
                   aria-label="Remove item"
@@ -320,10 +399,10 @@ function DocumentSection({ site, kind }: { site: SiteRow; kind: DocKind }) {
           </div>
         )}
 
-        <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
+        {!oneRate && <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
           <span>Total</span>
           <span className="figure">{formatPaise(total)}</span>
-        </div>
+        </div>}
       </>
     );
   }

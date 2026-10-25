@@ -44,7 +44,7 @@ export function InvoicesTab({ site }: { site: SiteRow }) {
   });
 
   const total = (invoices ?? []).reduce(
-    (sum, i) => sum + invoiceTotalPaise(i.lines, i.doc.discount_paise),
+    (sum, i) => sum + invoiceTotalPaise(i.lines, i.doc.discount_paise, i.doc.lump_sum_paise),
     0,
   );
 
@@ -103,7 +103,7 @@ export function InvoicesTab({ site }: { site: SiteRow }) {
                   </div>
                 </div>
                 <div className="figure shrink-0 text-sm">
-                  {formatPaise(invoiceTotalPaise(lines, doc.discount_paise))}
+                  {formatPaise(invoiceTotalPaise(lines, doc.discount_paise, doc.lump_sum_paise))}
                 </div>
                 <span className="shrink-0 text-muted">›</span>
               </button>

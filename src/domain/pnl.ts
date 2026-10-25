@@ -1,6 +1,5 @@
 import { db } from "@/lib/db";
 import { listDocuments, listItems } from "./documents";
-import { documentTotalPaise } from "./quotation";
 import { invoiceTotalPaise } from "./invoice";
 import { listAttendance } from "./attendance";
 import { listTxns, sumPaise } from "./transactions";
@@ -38,10 +37,7 @@ export async function siteBillTotalPaise(siteId: string): Promise<number> {
   for (const doc of docs) {
     if (doc.kind === "quotation") continue;
     const items = await listItems(doc.id);
-    total +=
-      doc.kind === "invoice"
-        ? invoiceTotalPaise(items, doc.discount_paise)
-        : documentTotalPaise(items);
+    total += invoiceTotalPaise(items, doc.discount_paise, doc.lump_sum_paise);
   }
   return total;
 }

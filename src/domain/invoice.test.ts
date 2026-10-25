@@ -62,6 +62,23 @@ async function addLine(
 describe("invoiceTotals", () => {
   const items = [{ amount_paise: 500000 }, { amount_paise: 250000 }];
 
+  it("uses one document price once, independent of line amounts, then applies discount", () => {
+    expect(invoiceTotals(items, 50000, 600000)).toEqual({
+      subtotalPaise: 600000, discountPaise: 50000, totalPaise: 550000,
+    });
+    expect(invoiceTotalPaise([...items, ...items], 50000, 600000)).toBe(550000);
+  });
+
+  it("treats a zero document price as enabled and clamps the discount to that price", () => {
+    expect(invoiceTotalPaise(items, 50000, 0)).toBe(0);
+    expect(invoiceTotalPaise(items, 900000, 600000)).toBe(0);
+  });
+
+  it("keeps item pricing for documents with no document-wide price", () => {
+    expect(invoiceTotalPaise(items, 50000, null)).toBe(700000);
+    expect(invoiceTotalPaise(items, 50000, undefined)).toBe(700000);
+  });
+
   it("subtracts the discount from the subtotal", () => {
     expect(invoiceTotals(items, 50000)).toEqual({
       subtotalPaise: 750000,
@@ -234,6 +251,24 @@ describe("listItemLibrary", () => {
 });
 
 describe("invoices in the P&L", () => {
+  it("persists one price in the outbox and uses it for income, receivable, and profit", async () => {
+    const inv = await createInvoice(SITE);
+    const line = await addLine(inv.id, { amount_paise: 800000 });
+    await documentRepo.put({ ...inv, lump_sum_paise: 500000, discount_paise: 25000 });
+    const saved = await documentRepo.getById(inv.id);
+    expect(saved?.lump_sum_paise).toBe(500000);
+    const queued = await db.outbox.where("row_id").equals(inv.id).toArray();
+    expect(queued.some((row) => (row.payload as { lump_sum_paise?: number }).lump_sum_paise === 500000)).toBe(true);
+    const pnl = await sitePnl(SITE);
+    expect(pnl.billTotalPaise).toBe(475000);
+    expect(pnl.receivablePaise).toBe(475000);
+    expect(pnl.profitPaise).toBe(475000);
+
+    // Disabling restores the original line prices without rewriting them.
+    await documentRepo.put({ ...saved!, lump_sum_paise: null });
+    expect(await lineItemRepo.getById(line.id)).toMatchObject({ amount_paise: 800000 });
+    expect((await sitePnl(SITE)).billTotalPaise).toBe(775000);
+  });
   it("counts as income, net of discount, alongside a converted bill", async () => {
     const inv = await createInvoice(SITE);
     await addLine(inv.id, { amount_paise: 800000 });

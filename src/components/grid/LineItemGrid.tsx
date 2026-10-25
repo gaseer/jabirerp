@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import type { DocKind, LineItemRow } from "@/lib/db";
 import { lineItemRepo } from "@/repo/repos";
 import { ensureDocument } from "@/domain/documents";
@@ -54,12 +54,18 @@ export function LineItemGrid({
   items,
   ready,
   onChanged,
+  onSubtotalChange,
+  oneRate = false,
+  flushRef,
 }: {
   siteId: string;
   kind: DocKind;
   items: LineItemRow[];
   ready: boolean;
   onChanged: () => void;
+  onSubtotalChange?: (subtotalPaise: number) => void;
+  oneRate?: boolean;
+  flushRef?: MutableRefObject<(() => Promise<void>) | null>;
 }) {
   const [rows, setRows] = useState<GridRow[]>([]);
   // Snapshot of what is persisted, keyed by row id — lets us skip unchanged
@@ -67,6 +73,9 @@ export function LineItemGrid({
   const saved = useRef(new Map<string, string>());
   const nextPos = useRef(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (flushRef) flushRef.current = () => persist(rows);
+  });
 
   // Seed once the query has resolved, and again if the document kind flips
   // (quotation → bill on convert). Our own writes don't reseed: `ready`/`kind`
@@ -148,18 +157,21 @@ export function LineItemGrid({
   const total = documentTotalPaise(
     rows.filter(hasContent).map((r) => ({ amount_paise: rowAmountPaise(r) })),
   );
+  useEffect(() => {
+    onSubtotalChange?.(total);
+  }, [total, onSubtotalChange]);
 
   return (
     <div className="space-y-2">
       <SheetGrid
-        columns={COLUMNS}
+        columns={oneRate ? COLUMNS.filter((column) => column.key !== "rate") : COLUMNS}
         rows={rows}
         onChange={handleChange}
         blankRow={blankRow}
         onBlur={() => persist(rows)}
         onDeleteRow={deleteRow}
         storageKey={`doc-${kind}`}
-        computed={{
+        computed={oneRate ? undefined : {
           label: "Amount",
           render: (r) => formatPaise(rowAmountPaise(r)),
         }}
@@ -168,10 +180,10 @@ export function LineItemGrid({
         Long description? Tap ⤢ in the cell for a full-width box (⤢ in the header
         opens every row), or drag a column divider to widen it — the width sticks.
       </p>
-      <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
+      {!oneRate && <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
         <span>Total</span>
         <span>{formatPaise(total)}</span>
-      </div>
+      </div>}
     </div>
   );
 }

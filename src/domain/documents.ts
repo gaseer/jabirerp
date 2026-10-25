@@ -34,11 +34,12 @@ export async function ensureDocument(
     kind,
     doc_number: null,
     status: "draft",
-    // Invoice-only fields — a quotation/bill never uses them.
+    // Optional invoice metadata; discount applies to every document kind.
     doc_date: null,
     title: null,
     notes: null,
     discount_paise: 0,
+    lump_sum_paise: null,
   });
 }
 
@@ -53,6 +54,11 @@ export async function convertToBill(siteId: string): Promise<DocumentRow> {
   if (!quotation) throw new Error("No quotation to convert");
 
   const bill = await ensureDocument(siteId, "bill");
+  const discountedBill = await documentRepo.put({
+    ...bill,
+    discount_paise: quotation.discount_paise ?? 0,
+    lump_sum_paise: quotation.lump_sum_paise ?? null,
+  });
   const items = await listItems(quotation.id);
   for (const it of items) {
     await lineItemRepo.put({
@@ -69,5 +75,5 @@ export async function convertToBill(siteId: string): Promise<DocumentRow> {
 
   await documentRepo.put({ ...quotation, status: "converted" });
 
-  return bill;
+  return discountedBill;
 }

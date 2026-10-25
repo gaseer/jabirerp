@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import type { LineItemRow } from "@/lib/db";
 import { lineItemRepo } from "@/repo/repos";
 import { lineAmountPaise } from "@/domain/quotation";
@@ -60,7 +60,10 @@ export function InvoiceGrid({
   library,
   onChanged,
   onSubtotalChange,
+  flushRef,
+  oneRate = false,
 }: {
+  oneRate?: boolean;
   documentId: string;
   items: LineItemRow[];
   ready: boolean;
@@ -69,6 +72,7 @@ export function InvoiceGrid({
   onChanged: () => void;
   /** Live subtotal (paise) as typed — the page shows discount + grand total. */
   onSubtotalChange: (subtotalPaise: number) => void;
+  flushRef?: MutableRefObject<(() => Promise<void>) | null>;
 }) {
   const [rows, setRows] = useState<GridRow[]>([]);
   const [showSection, setShowSection] = useState(true);
@@ -77,6 +81,9 @@ export function InvoiceGrid({
   // aren't needlessly re-dirtied and re-synced.
   const saved = useRef(new Map<string, string>());
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (flushRef) flushRef.current = () => persist(rows);
+  });
 
   // Seed once the query resolves, and again only if the invoice changes — our
   // own writes never reseed, so in-progress typing is never clobbered.
@@ -102,7 +109,7 @@ export function InvoiceGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subtotal]);
 
-  const columns: GridColumn[] = [
+  const allColumns: GridColumn[] = [
     ...(showSection
       ? [
           {
@@ -125,7 +132,7 @@ export function InvoiceGrid({
       expandable: true,
       options: library.map((l) => ({
         value: l.description,
-        label: `${formatPaise(l.rate_paise)}${l.unit ? ` / ${l.unit}` : ""}`,
+        label: oneRate ? (l.unit ?? "") : `${formatPaise(l.rate_paise)}${l.unit ? ` / ${l.unit}` : ""}`,
       })),
     },
     ...(showUnit
@@ -143,6 +150,7 @@ export function InvoiceGrid({
     { key: "qty", label: "Qty", type: "decimal", width: "64px", align: "right" },
     { key: "rate", label: "Rate ₹", type: "rupee", width: "96px", align: "right" },
   ];
+  const columns = oneRate ? allColumns.filter((column) => column.key !== "rate") : allColumns;
 
   // A new row starts in the same section as the last one — sections come in
   // runs ("all the Works, then all the Materials"), so this is nearly always right.
@@ -162,7 +170,7 @@ export function InvoiceGrid({
     return {
       ...row,
       // Only fill what the user hasn't typed — never overwrite a real edit.
-      rate: row.rate?.trim() ? row.rate : String(hit.rate_paise / 100),
+      rate: oneRate ? row.rate : (row.rate?.trim() ? row.rate : String(hit.rate_paise / 100)),
       unit: row.unit?.trim() ? row.unit : (hit.unit ?? ""),
       section: row.section?.trim() ? row.section : (hit.section ?? ""),
     };
@@ -258,7 +266,7 @@ export function InvoiceGrid({
       <SheetGrid
         columns={columns}
         rows={rows}
-        onChange={commit}
+        onChange={(next) => commit(next)}
         blankRow={blankRow}
         onBlur={() => persist(rows)}
         onDeleteRow={deleteRow}
@@ -267,7 +275,7 @@ export function InvoiceGrid({
         onCellCommit={autofill}
         maxBodyHeight="46vh"
         storageKey="invoice"
-        computed={{
+        computed={oneRate ? undefined : {
           label: "Amount",
           render: (r) => formatPaise(rowAmountPaise(r)),
         }}
@@ -282,7 +290,7 @@ export function InvoiceGrid({
         opens every row), or drag a column divider to widen it — the width sticks.
       </p>
 
-      {sections.length > 1 && (
+      {!oneRate && sections.length > 1 && (
         <div className="space-y-1 rounded-sm bg-border/25 p-2 text-sm">
           {sections.map((s) => (
             <div key={s.name} className="flex items-center justify-between">

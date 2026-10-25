@@ -18,6 +18,73 @@ import type { Settlement } from "@/domain/settlement";
 import type { ShopLedger } from "@/domain/shops";
 import { sumPaise } from "@/domain/transactions";
 import { hoursLabel, timeRangeLabel } from "@/domain/wages";
+import type { SiteWorkersReport } from "@/domain/siteWorkers";
+
+/** Site-only worker summary and approved attendance, across all dates. */
+export async function shareSiteWorkersPdf(site: SiteRow, report: SiteWorkersReport): Promise<void> {
+  await renderStatementPdf({
+    title: "SITE WORKERS STATEMENT",
+    partyName: site.name,
+    partySub: [site.location, site.work_type].filter(Boolean).join("  ·  "),
+    periodLabel: "All time - approved attendance only",
+    sections: [
+      {
+        heading: "Workers on this site",
+        head: ["Worker", "Hours", "Wages"],
+        rows: report.workers.map((worker) => [worker.name, hoursLabel(worker.hours), formatPaisePdf(worker.wagesPaise)]),
+        rightAlignFrom: 1,
+        foot: ["Total", hoursLabel(report.totalHours), formatPaisePdf(report.totalWagesPaise)],
+      },
+      {
+        heading: "Approved shifts",
+        head: ["Date", "Worker", "Time", "Hours", "Wage"],
+        rows: report.shifts.map(({ attendance: row, workerName }) => [
+          formatDate(row.work_date),
+          workerName,
+          timeRangeLabel(row.start_time, row.end_time),
+          hoursLabel(row.hours),
+          formatPaisePdf(row.wage_paise),
+        ]),
+      },
+    ],
+    summary: [
+      { k: "Workers", v: String(report.workers.length) },
+      { k: "Total hours", v: hoursLabel(report.totalHours) },
+      { k: "Total wages (site)", v: formatPaisePdf(report.totalWagesPaise), emphasis: true },
+    ],
+    filename: slugFilename("site-workers", site.name),
+  });
+}
+
+/** Export the site's currently visible expenses, preserving period/category filters. */
+export async function shareSiteExpensesPdf(
+  site: SiteRow,
+  expenses: TransactionRow[],
+  range: DateRange,
+  category = "",
+): Promise<void> {
+  const total = sumPaise(expenses);
+  await renderStatementPdf({
+    title: "SITE EXPENSES STATEMENT",
+    partyName: site.name,
+    partySub: [site.location, site.work_type].filter(Boolean).join("  ·  "),
+    periodLabel: rangeLabel(range),
+    sections: [{
+      heading: category ? `Expenses - ${category}` : "Expenses - all categories",
+      head: ["Date", "Category", "Mode", "Note", "Amount"],
+      rows: expenses.map((expense) => [
+        formatDate(expense.txn_date),
+        expense.category ?? "",
+        expense.mode === "bank" ? "Bank" : "Cash",
+        expense.note ?? "",
+        formatPaisePdf(expense.amount_paise),
+      ]),
+      foot: ["", "", "", "Total expenses", formatPaisePdf(total)],
+    }],
+    summary: [{ k: "Total expenses (period)", v: formatPaisePdf(total), emphasis: true }],
+    filename: slugFilename("site-expenses", site.name),
+  });
+}
 
 /**
  * Generic customer/worker-facing statement PDF. Same lazy jsPDF import and

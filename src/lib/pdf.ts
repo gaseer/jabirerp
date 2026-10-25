@@ -1,6 +1,5 @@
 import type { jsPDF } from "jspdf";
 import type { UserOptions } from "jspdf-autotable";
-import { documentTotalPaise } from "@/domain/quotation";
 import { groupSections, invoiceTotals, isUnsectioned } from "@/domain/invoice";
 import type { DocKind, DocumentRow, LineItemRow, SiteRow } from "@/lib/db";
 import { formatDateLong, todayIso } from "@/lib/dates";
@@ -295,11 +294,16 @@ export async function shareDocumentPdf(
   site: SiteRow,
   kind: DocKind,
   items: LineItemRow[],
+  discountPaise = 0,
+  lumpSumPaise: number | null = null,
 ): Promise<void> {
   const { jsPDF: JsPDF, autoTable } = await loadPdfLibs();
   const doc = new JsPDF({ unit: "pt", format: "a4" });
   const title = kind === "quotation" ? "Quotation" : "Bill";
-  const total = documentTotalPaise(items);
+  const totals = invoiceTotals(items, discountPaise, lumpSumPaise);
+  const oneRate = lumpSumPaise !== null;
+  const labelSpan = oneRate ? 2 : 4;
+  const total = totals.totalPaise;
 
   let y = await drawLetterhead(doc, {
     title,
@@ -316,19 +320,28 @@ export async function shareDocumentPdf(
   autoTable(doc, {
     ...tableTheme(),
     startY: y,
-    head: [["#", "Description", "Qty", "Rate", "Amount"]],
+    head: [oneRate ? ["#", "Description", "Qty"] : ["#", "Description", "Qty", "Rate", "Amount"]],
     body: items.map((it, i) => [
       String(i + 1),
       it.description,
       String(it.qty),
-      formatPaisePdf(it.rate_paise),
-      formatPaisePdf(it.amount_paise),
+      ...(!oneRate ? [formatPaisePdf(it.rate_paise), formatPaisePdf(it.amount_paise)] : []),
     ]),
     foot: [
+      ...(totals.discountPaise > 0 ? [
+        [
+          { content: "Subtotal", colSpan: labelSpan, styles: { halign: "right" as const } },
+          { content: formatPaisePdf(totals.subtotalPaise), styles: { halign: "right" as const } },
+        ],
+        [
+          { content: "Discount", colSpan: labelSpan, styles: { halign: "right" as const } },
+          { content: `-${formatPaisePdf(totals.discountPaise)}`, styles: { halign: "right" as const } },
+        ],
+      ] : []),
       [
         {
           content: "Total",
-          colSpan: 4,
+          colSpan: labelSpan,
           styles: { halign: "right", fillColor: BRAND_COLORS.navy, textColor: 255 },
         },
         {
@@ -341,8 +354,10 @@ export async function shareDocumentPdf(
       0: { cellWidth: 28, halign: "right" },
       1: { cellWidth: "auto" },
       2: { cellWidth: 48, halign: "right" },
-      3: { cellWidth: 82, halign: "right" },
-      4: { cellWidth: 92, halign: "right" },
+      ...(!oneRate ? {
+        3: { cellWidth: 82, halign: "right" as const },
+        4: { cellWidth: 92, halign: "right" as const },
+      } : { 2: { cellWidth: 92, halign: "right" as const } }),
     },
   });
 
@@ -383,9 +398,12 @@ export async function shareInvoicePdf(
     ],
   });
 
+  const oneRate = invoice.lump_sum_paise != null;
+  const columnCount = oneRate ? 4 : 6;
+  const labelSpan = columnCount - 1;
   const sections = groupSections(items);
   const flat = isUnsectioned(sections);
-  const totals = invoiceTotals(items, invoice.discount_paise);
+  const totals = invoiceTotals(items, invoice.discount_paise, invoice.lump_sum_paise);
 
   // Section headings and subtotals are ordinary table rows so autotable page-
   // breaks them correctly — no manual positioning that could overflow a page.
@@ -396,7 +414,7 @@ export async function shareInvoicePdf(
       body.push([
         {
           content: section.name,
-          colSpan: 6,
+          colSpan: columnCount,
           styles: {
             fillColor: BRAND_COLORS.tint,
             textColor: BRAND_COLORS.navy,
@@ -414,15 +432,14 @@ export async function shareInvoicePdf(
         it.description,
         it.unit ?? "",
         String(it.qty),
-        formatPaisePdf(it.rate_paise),
-        formatPaisePdf(it.amount_paise),
+        ...(!oneRate ? [formatPaisePdf(it.rate_paise), formatPaisePdf(it.amount_paise)] : []),
       ]);
     }
-    if (!flat) {
+    if (!flat && !oneRate) {
       body.push([
         {
           content: `${section.name} subtotal`,
-          colSpan: 5,
+          colSpan: labelSpan,
           styles: { halign: "right", fontStyle: "bold", textColor: BRAND_COLORS.muted },
         },
         {
@@ -437,11 +454,11 @@ export async function shareInvoicePdf(
   if (totals.discountPaise > 0) {
     foot.push(
       [
-        { content: "Subtotal", colSpan: 5, styles: { halign: "right", fontStyle: "normal" } },
+        { content: "Subtotal", colSpan: labelSpan, styles: { halign: "right", fontStyle: "normal" } },
         { content: formatPaisePdf(totals.subtotalPaise), styles: { halign: "right", fontStyle: "normal" } },
       ],
       [
-        { content: "Discount", colSpan: 5, styles: { halign: "right", fontStyle: "normal" } },
+        { content: "Discount", colSpan: labelSpan, styles: { halign: "right", fontStyle: "normal" } },
         {
           content: `-${formatPaisePdf(totals.discountPaise)}`,
           styles: { halign: "right", fontStyle: "normal" },
@@ -452,7 +469,7 @@ export async function shareInvoicePdf(
   foot.push([
     {
       content: "Total",
-      colSpan: 5,
+      colSpan: labelSpan,
       styles: { halign: "right", fillColor: BRAND_COLORS.navy, textColor: 255 },
     },
     {
@@ -464,7 +481,7 @@ export async function shareInvoicePdf(
   autoTable(doc, {
     ...tableTheme(),
     startY: y,
-    head: [["#", "Work / Item", "Unit", "Qty", "Rate", "Amount"]],
+    head: [oneRate ? ["#", "Work / Item", "Unit", "Qty"] : ["#", "Work / Item", "Unit", "Qty", "Rate", "Amount"]],
     body,
     foot,
     columnStyles: {
@@ -472,8 +489,10 @@ export async function shareInvoicePdf(
       1: { cellWidth: "auto" },
       2: { cellWidth: 44 },
       3: { cellWidth: 44, halign: "right" },
-      4: { cellWidth: 76, halign: "right" },
-      5: { cellWidth: 88, halign: "right" },
+      ...(!oneRate ? {
+        4: { cellWidth: 76, halign: "right" as const },
+        5: { cellWidth: 88, halign: "right" as const },
+      } : { 3: { cellWidth: 88, halign: "right" as const } }),
     },
   });
 

@@ -5,6 +5,9 @@ import type { AttendanceRow, SiteRow } from "@/lib/db";
 import { employeeRepo } from "@/repo/repos";
 import { sync } from "@/repo/SupabaseSync";
 import { editAttendance, listAttendance, markAttendance } from "@/domain/attendance";
+import { buildSiteWorkersReport } from "@/domain/siteWorkers";
+import { shareSiteWorkersPdf } from "@/lib/statementPdf";
+import { shareSiteWorkersXlsx } from "@/lib/xlsx";
 import {
   attendanceWagePaise,
   hoursBetween,
@@ -44,12 +47,12 @@ export function WorkersTab({ site }: { site: SiteRow }) {
   // Wage round-off override for the add/edit form; "" = use the computed wage.
   const [wageOverride, setWageOverride] = useState("");
 
-  const { data: employees = [] } = useQuery({
+  const { data: employees = [], isSuccess: employeesReady } = useQuery({
     queryKey: ["employees"],
     queryFn: () => employeeRepo.getAll(),
   });
 
-  const { data: attendance = [] } = useQuery({
+  const { data: attendance = [], isSuccess: attendanceReady } = useQuery({
     queryKey: ["site-attendance", site.id],
     queryFn: () => listAttendance({ siteId: site.id }),
   });
@@ -114,16 +117,13 @@ export function WorkersTab({ site }: { site: SiteRow }) {
 
   // Per-worker rollup for this site — pending/rejected shifts show in the
   // list below (with a status pill) but don't count as a wage cost yet.
-  const approved = attendance.filter((a) => a.status === "approved");
-  const byWorker = new Map<string, { hours: number; wagesPaise: number }>();
-  for (const a of approved) {
-    const agg = byWorker.get(a.employee_id) ?? { hours: 0, wagesPaise: 0 };
-    agg.hours += a.hours;
-    agg.wagesPaise += a.wage_paise;
-    byWorker.set(a.employee_id, agg);
-  }
+  const report = buildSiteWorkersReport(site.id, attendance, employees);
   const empName = new Map(employees.map((e) => [e.id, e.name]));
-  const totalWages = approved.reduce((s, a) => s + a.wage_paise, 0);
+  const share = useMutation({
+    mutationFn: (format: "pdf" | "excel") => format === "pdf"
+      ? shareSiteWorkersPdf(site, report)
+      : shareSiteWorkersXlsx(site, report),
+  });
 
   // The entry being edited is not a duplicate of itself → never hint about it.
   const otherSameDay = sameDay.filter((r) => r.id !== editingId);
@@ -333,29 +333,39 @@ export function WorkersTab({ site }: { site: SiteRow }) {
 
       <Card className="space-y-3">
         <SectionHead title="Workers on this site" />
-        {byWorker.size === 0 ? (
+        {report.workers.length === 0 ? (
           <p className="text-sm text-muted">No attendance recorded yet.</p>
         ) : (
           <div className="divide-y divide-border">
-            {[...byWorker.entries()].map(([empId, agg]) => (
+            {report.workers.map((worker) => (
               <Link
-                key={empId}
-                to={`/workers/${empId}`}
+                key={worker.employeeId}
+                to={`/workers/${worker.employeeId}`}
                 className="flex items-center justify-between gap-2 py-2"
               >
                 <div>
-                  <div className="font-medium">{empName.get(empId) ?? "Unknown"}</div>
-                  <div className="text-xs text-muted">{hoursLabel(agg.hours)} worked</div>
+                  <div className="font-medium">{worker.name}</div>
+                  <div className="text-xs text-muted">{hoursLabel(worker.hours)} worked</div>
                 </div>
-                <div className="figure text-sm">{formatPaise(agg.wagesPaise)}</div>
+                <div className="figure text-sm">{formatPaise(worker.wagesPaise)}</div>
               </Link>
             ))}
           </div>
         )}
         <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
           <span>Total wages (site)</span>
-          <span className="figure text-red">{formatPaise(totalWages)}</span>
+          <span className="figure text-red">{formatPaise(report.totalWagesPaise)}</span>
         </div>
+        <p className="text-xs text-muted">Share all approved attendance for this site, with worker totals and shift details.</p>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="ghost" disabled={!employeesReady || !attendanceReady || report.workers.length === 0 || share.isPending} onClick={() => share.mutate("pdf")}>
+            Share PDF
+          </Button>
+          <Button size="sm" variant="ghost" disabled={!employeesReady || !attendanceReady || report.workers.length === 0 || share.isPending} onClick={() => share.mutate("excel")}>
+            Share Excel
+          </Button>
+        </div>
+        {share.isError && <p role="alert" className="text-sm text-red">Could not share the statement. Please try again.</p>}
       </Card>
 
       {attendance.length > 0 && (

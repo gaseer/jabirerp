@@ -28,8 +28,8 @@ export type DocStatus = "draft" | "converted" | "final";
 
 /**
  * A quotation / bill / direct invoice header for a site. Total is always
- * derived from line_items (minus `discount_paise`), never stored.
- * `doc_date`/`title`/`notes`/`discount_paise` are only used by invoices;
+ * derived from line_items or a document-wide lump sum, minus `discount_paise`.
+ * `doc_date`/`title`/`notes` are only used by invoices; discount applies to all kinds;
  * quotation and bill rows leave them null/0.
  */
 export interface DocumentRow extends BaseEntity {
@@ -41,6 +41,7 @@ export interface DocumentRow extends BaseEntity {
   title: string | null; // e.g. "Ground floor wiring"
   notes: string | null; // printed under the total (terms, thanks…)
   discount_paise: number; // 0 = none; clamped to the subtotal when applied
+  lump_sum_paise?: number | null; // null/absent = item pricing; 0 or more = one price for the document
 }
 
 /**
@@ -293,6 +294,12 @@ export class PowerPlusDB extends Dexie {
             a.status ??= "approved";
           });
       });
+    // v11: nullable document-wide price. Existing documents keep item pricing.
+    this.version(11).upgrade(async (tx) => {
+      await tx.table("documents").toCollection().modify((d: Record<string, unknown>) => {
+        d.lump_sum_paise ??= null;
+      });
+    });
   }
 }
 
